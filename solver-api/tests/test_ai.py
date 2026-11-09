@@ -258,3 +258,64 @@ def test_translate_uses_weekday_stated_in_words_over_the_pointed_cell(synth):
     c4, *_ = make(synth, FakeLLM(structured=[draft_request(weekdays=[6, 0])]))
     j4 = c4.post(f"{BASE}/rules/translate", json={"text": "土日の夜勤は無理", "month": "2026-11", "staff_id": sid}).json()
     assert j4["candidates"][0]["rule"]["days"]["weekdays"] == [0, 6] and "日・土曜" in j4["candidates"][0]["label"]
+
+
+# ---------------------------------------------------------------- シフト作成チャットの意図解釈
+
+PI_BODY = {"text": "山田さんの12/5を休みに", "month": "2026-12", "today": "2026-11-10",
+           "staff": [{"id": "EMP-001", "name": "山田 拓也"}], "units": [{"id": "U1", "name": "ひなた"}]}
+
+
+def test_plan_intent_returns_only_validated_fields(synth):
+    from care.ai.planintent import PlanIntent
+    llm = FakeLLM(structured=[PlanIntent(intent="off", staff_ids=["EMP-001", "EVIL"], date="2026-12-05")])
+    client, *_ = make(synth, llm)
+    r = client.post("/api/v1/plan-intent", json=PI_BODY)
+    assert r.status_code == 200
+    i = r.json()["intent"]
+    assert i["intent"] == "off" and i["staff_ids"] == ["EMP-001"] and i["date"] == "2026-12-05"      # 範囲外のIDは捨てる
+
+
+def test_plan_intent_missing_fields_become_unknown(synth):
+    from care.ai.planintent import PlanIntent
+    llm = FakeLLM(structured=[PlanIntent(intent="assign", staff_ids=["EMP-001"], date="2027-01-05", shift="夜勤")])
+    client, *_ = make(synth, llm)
+    i = client.post("/api/v1/plan-intent", json=PI_BODY).json()["intent"]
+    assert i["intent"] == "unknown" and i["date"] is None                                           # 月の外の日付は使わない
+
+
+def test_plan_intent_ai_failure_is_503(synth):
+    client, *_ = make(synth, FakeLLM(structured=[AIError("boom")]))
+    assert client.post("/api/v1/plan-intent", json=PI_BODY).status_code == 503
+
+
+def test_leader_and_employee_intents_are_sanitized(synth):
+    from care.ai.planintent import EmployeeIntent, LeaderIntent
+    llm = FakeLLM(structured=[LeaderIntent(intent="candidates", date="2026-11-24", shift="日勤"), LeaderIntent(intent="candidates", date="1999-01-01", shift=None),
+                              EmployeeIntent(kind="late", dates=["2026-11-12", "2030-01-01"], time="25:99", minutes_late=30, reason="通院"),
+                              EmployeeIntent(kind="off", dates=[])])
+    client, *_ = make(synth, llm)
+    b = {"text": "x", "today": "2026-11-10"}
+    assert client.post("/api/v1/leader-intent", json=b).json()["intent"]["intent"] == "candidates"
+    assert client.post("/api/v1/leader-intent", json=b).json()["intent"]["intent"] == "unknown"        # 日付と勤務帯が無ければ操作にしない
+    e = client.post("/api/v1/employee-intent", json=b).json()["intent"]
+    assert e["dates"] == ["2026-11-12"] and e["time"] is None and e["minutes_late"] == 30             # 範囲外の日付・不正な時刻は捨てる
+    assert client.post("/api/v1/employee-intent", json=b).json()["intent"]["kind"] == "unknown"
+
+
+def test_intent_quota_is_separate_from_chat_quota(synth):
+    from care.ai.planintent import LeaderIntent
+    llm = FakeLLM(structured=[LeaderIntent(intent="status") for _ in range(3)])
+    client, svc, a = make(synth, llm, ip_limit=1, intent_ip_limit=5)
+    for _ in range(3):
+        assert client.post("/api/v1/leader-intent", json={"text": "状況", "today": "2026-11-10"}).status_code == 200   # チャット枠（1回）とは別に数える
+
+
+def test_plan_intent_extra_ops_are_validated(synth):
+    from care.ai.planintent import PlanIntent, PlanOp
+    llm = FakeLLM(structured=[PlanIntent(intent="off", staff_ids=["EMP-001"], date="2026-12-05",
+                                         extra=[PlanOp(intent="off", staff_ids=["EMP-001"], date="2026-12-06"), PlanOp(intent="off", staff_ids=["EVIL"], date="2026-12-07"),
+                                                PlanOp(intent="assign", staff_ids=["EMP-001"], date="2026-12-08", shift=None)])])
+    client, *_ = make(synth, llm)
+    i = client.post("/api/v1/plan-intent", json=PI_BODY).json()["intent"]
+    assert [o["date"] for o in i["extra"]] == ["2026-12-06"]            # 範囲外のID・勤務帯の無い入れる操作は捨てる

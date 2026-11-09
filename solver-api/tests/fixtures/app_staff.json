@@ -1,0 +1,688 @@
+[
+ {
+  "staff_id": "EMP-001",
+  "role": "主任",
+  "employment": "常勤",
+  "years": 21,
+  "skills": [
+   "follow",
+   "medical",
+   "dementia",
+   "ict",
+   "preceptor",
+   "night",
+   "terminal"
+  ],
+  "shifts": [
+   "日勤",
+   "早番"
+  ],
+  "home_unit": "U1",
+  "leave_by": null,
+  "is_leader": true
+ },
+ {
+  "staff_id": "EMP-002",
+  "role": "介護福祉士",
+  "employment": "常勤",
+  "years": 15,
+  "skills": [
+   "medical",
+   "dementia",
+   "bath",
+   "night",
+   "terminal",
+   "follow"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U1",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-003",
+  "role": "介護福祉士",
+  "employment": "常勤",
+  "years": 9,
+  "skills": [
+   "medical",
+   "night",
+   "driver",
+   "bath",
+   "swallow"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U2",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-004",
+  "role": "介護福祉士",
+  "employment": "常勤",
+  "years": 24,
+  "skills": [
+   "dementia",
+   "terminal",
+   "swallow",
+   "follow",
+   "preceptor"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番"
+  ],
+  "home_unit": "U2",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-005",
+  "role": "介護福祉士",
+  "employment": "常勤",
+  "years": 6,
+  "skills": [
+   "medical",
+   "night",
+   "bath",
+   "driver"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U3",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-006",
+  "role": "介護福祉士",
+  "employment": "常勤",
+  "years": 12,
+  "skills": [
+   "medical",
+   "dementia",
+   "night",
+   "ict"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U3",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-007",
+  "role": "介護職員",
+  "employment": "常勤",
+  "years": 4,
+  "skills": [
+   "night",
+   "bath",
+   "driver"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U4",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-008",
+  "role": "介護福祉士",
+  "employment": "常勤",
+  "years": 7,
+  "skills": [
+   "medical",
+   "night",
+   "swallow",
+   "dementia"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U4",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-009",
+  "role": "介護福祉士",
+  "employment": "常勤",
+  "years": 18,
+  "skills": [
+   "night",
+   "terminal",
+   "bath",
+   "follow",
+   "driver",
+   "dementia"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U1",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-010",
+  "role": "介護職員",
+  "employment": "常勤",
+  "years": 2,
+  "skills": [
+   "night",
+   "bath"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U2",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-011",
+  "role": "介護福祉士",
+  "employment": "常勤",
+  "years": 10,
+  "skills": [
+   "medical",
+   "night",
+   "dementia",
+   "bath"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U3",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-012",
+  "role": "介護福祉士",
+  "employment": "常勤",
+  "years": 13,
+  "skills": [
+   "dementia",
+   "swallow",
+   "ict",
+   "follow"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番"
+  ],
+  "home_unit": "U4",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-013",
+  "role": "介護福祉士",
+  "employment": "常勤",
+  "years": 20,
+  "skills": [
+   "medical",
+   "night",
+   "terminal",
+   "bath",
+   "preceptor"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U1",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-014",
+  "role": "介護職員",
+  "employment": "常勤",
+  "years": 3,
+  "skills": [
+   "night",
+   "swallow"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U2",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-015",
+  "role": "新人",
+  "employment": "常勤",
+  "years": 1,
+  "skills": [],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番"
+  ],
+  "home_unit": "U3",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-016",
+  "role": "介護福祉士",
+  "employment": "パート",
+  "years": 16,
+  "skills": [
+   "dementia",
+   "bath",
+   "swallow"
+  ],
+  "shifts": [],
+  "home_unit": "U1",
+  "leave_by": "15:00",
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-017",
+  "role": "介護福祉士",
+  "employment": "常勤",
+  "years": 8,
+  "skills": [
+   "medical",
+   "night",
+   "dementia",
+   "bath",
+   "swallow"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "夜勤"
+  ],
+  "home_unit": "U3",
+  "leave_by": "18:00",
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-018",
+  "role": "介護職員",
+  "employment": "常勤",
+  "years": 5,
+  "skills": [
+   "night",
+   "driver",
+   "bath"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U4",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-019",
+  "role": "介護福祉士",
+  "employment": "常勤",
+  "years": 11,
+  "skills": [
+   "medical",
+   "night",
+   "follow",
+   "ict"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U2",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-020",
+  "role": "介護職員",
+  "employment": "常勤",
+  "years": 2,
+  "skills": [
+   "night",
+   "bath"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U3",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-021",
+  "role": "介護福祉士",
+  "employment": "パート",
+  "years": 22,
+  "skills": [
+   "dementia",
+   "terminal",
+   "swallow"
+  ],
+  "shifts": [
+   "早番"
+  ],
+  "home_unit": "U4",
+  "leave_by": "16:00",
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-022",
+  "role": "介護福祉士",
+  "employment": "常勤",
+  "years": 14,
+  "skills": [
+   "medical",
+   "night",
+   "driver",
+   "bath",
+   "follow"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U1",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-023",
+  "role": "介護福祉士",
+  "employment": "常勤",
+  "years": 7,
+  "skills": [
+   "medical",
+   "dementia",
+   "night",
+   "swallow"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U2",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-024",
+  "role": "新人",
+  "employment": "常勤",
+  "years": 1,
+  "skills": [
+   "night"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U4",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-025",
+  "role": "介護福祉士",
+  "employment": "パート",
+  "years": 26,
+  "skills": [
+   "dementia",
+   "terminal",
+   "preceptor"
+  ],
+  "shifts": [
+   "日勤",
+   "遅番"
+  ],
+  "home_unit": "U3",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-026",
+  "role": "介護福祉士",
+  "employment": "常勤",
+  "years": 5,
+  "skills": [
+   "medical",
+   "night",
+   "dementia",
+   "bath"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U1",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-027",
+  "role": "介護職員",
+  "employment": "常勤",
+  "years": 4,
+  "skills": [
+   "night",
+   "swallow",
+   "bath"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U2",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-028",
+  "role": "介護福祉士",
+  "employment": "常勤",
+  "years": 8,
+  "skills": [
+   "medical",
+   "night",
+   "driver",
+   "dementia"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U4",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-029",
+  "role": "介護福祉士",
+  "employment": "常勤",
+  "years": 12,
+  "skills": [
+   "medical",
+   "night",
+   "bath",
+   "swallow"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U3",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-030",
+  "role": "介護職員",
+  "employment": "常勤",
+  "years": 6,
+  "skills": [
+   "night",
+   "bath",
+   "driver"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U1",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-031",
+  "role": "介護職員",
+  "employment": "常勤",
+  "years": 3,
+  "skills": [
+   "night",
+   "dementia"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U2",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-032",
+  "role": "介護福祉士",
+  "employment": "常勤",
+  "years": 11,
+  "skills": [
+   "medical",
+   "night",
+   "follow",
+   "bath"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U4",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-033",
+  "role": "介護職員",
+  "employment": "常勤",
+  "years": 5,
+  "skills": [
+   "night",
+   "swallow",
+   "ict"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U3",
+  "leave_by": null,
+  "is_leader": false
+ },
+ {
+  "staff_id": "EMP-034",
+  "role": "介護福祉士",
+  "employment": "常勤",
+  "years": 17,
+  "skills": [
+   "medical",
+   "night",
+   "terminal",
+   "bath"
+  ],
+  "shifts": [
+   "早番",
+   "日勤",
+   "遅番",
+   "夜勤"
+  ],
+  "home_unit": "U1",
+  "leave_by": null,
+  "is_leader": false
+ }
+]

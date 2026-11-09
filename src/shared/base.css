@@ -51,3 +51,5 @@ input, select, textarea { font: inherit; color: inherit; }
 .demo-bar { display: flex; gap: 8px; align-items: center; padding: 6px 12px; background: #fff; border-top: 1px dashed var(--line); font-size: 12px; color: var(--tx2); }
 .demo-bar button { text-decoration: underline; font-size: 12px; color: var(--tx2); }
 .toast { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); background: #303134; color: #fff; padding: 12px 20px; border-radius: 8px; font-size: 14px; z-index: 200; max-width: 90vw; }
+
+.modal.wide { width: min(1080px, 100%); }

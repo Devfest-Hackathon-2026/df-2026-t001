@@ -22,7 +22,7 @@ export function DemoMenu({ s }: { s: State }) {
       <button class="btn sm demo-btn" onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="dialog"><Icon n="science" sm /> デモ</button>
       {open && (
         <div class="demo-pop" role="dialog" aria-label="デモ用の操作">
-          <div class="small" style="margin-bottom:8px">デモ用の操作です（架空データ・モック）</div>
+          <div class="small" style="margin-bottom:8px">デモ用の操作です（架空データ）</div>
           <div class="demo-time"><span class="small">デモ時刻</span><b>{s.now}</b>{inQuiet(s.now, s.autopilot) && <span class="chip warn">連絡しない時間</span>}</div>
           <div class="row wrap" style="margin:8px 0 12px">
             <button class="btn sm" onClick={() => advanceClock(30)}>+30分</button>

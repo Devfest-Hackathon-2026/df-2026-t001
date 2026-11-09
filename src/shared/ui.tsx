@@ -7,11 +7,11 @@ import { resetDemo } from '../core/store';
 export const Icon = ({ n, fill, sm }: { n: string; fill?: boolean; sm?: boolean }) => <span class={`ms${fill ? ' fill' : ''}${sm ? ' sm' : ''}`} aria-hidden="true">{n}</span>;
 
 const modalStack: object[] = [];
-export function Modal({ title, onClose, children, footer }: { title: string; onClose: () => void; children: ComponentChildren; footer?: ComponentChildren }) {
+export function Modal({ title, onClose, children, footer, wide }: { title: string; onClose: () => void; children: ComponentChildren; footer?: ComponentChildren; wide?: boolean }) {
   useEffect(() => { const me = {}; modalStack.push(me); const f = (e: KeyboardEvent) => { if (e.key === 'Escape' && modalStack[modalStack.length - 1] === me) onClose(); }; window.addEventListener('keydown', f); const prev = document.body.style.overflow; document.body.style.overflow = 'hidden'; return () => { const i = modalStack.indexOf(me); if (i >= 0) modalStack.splice(i, 1); window.removeEventListener('keydown', f); document.body.style.overflow = prev; }; }, []);
   return (
     <div class="modal-back" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div class="modal" role="dialog" aria-modal="true" aria-label={title}>
+      <div class={`modal${wide ? ' wide' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
         <div class="modal-h"><h2>{title}</h2><button class="iconbtn" onClick={onClose} aria-label="閉じる"><Icon n="close" /></button></div>
         <div class="modal-b">{children}</div>
         {footer && <div style="padding:12px 24px 20px;border-top:1px solid var(--line2);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">{footer}</div>}
@@ -76,7 +76,7 @@ export function DemoBar({ role }: { role: 'employee' | 'leader' }) {
   const [ok, setOk] = useState(false);
   return (
     <div class="demo-bar">
-      <span>デモ（架空データ・モック）</span>
+      <span>デモ（架空データ）</span>
       <button onClick={() => { if (confirm('架空データを初期状態に戻します。よろしいですか？')) { resetDemo(); setOk(true); setTimeout(() => setOk(false), 1500); } }}>最初からやり直す</button>
       <a href={role === 'employee' ? './' : './employee.html'} style="color:var(--tx2)">{role === 'employee' ? 'リーダー画面を開く' : '従業員画面を開く'}</a>
       {ok && <span>初期化しました</span>}

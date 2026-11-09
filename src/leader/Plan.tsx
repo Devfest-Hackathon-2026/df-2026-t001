@@ -6,10 +6,18 @@ import { canWork, summarizeDay } from '../core/roster';
 import { monthStats } from '../core/labor';
 import { holidayOf, eventsOn } from '../core/events';
 import { monthEnd } from '../core/planner';
-import { createPlan, planAssign, publishPlan, remindUnsubmitted } from '../core/store';
+import { createPlan, planAssign, planSolving, publishPlan, remindUnsubmitted, sendPlanRequest } from '../core/store';
 import type { State } from '../core/store';
 import type { Assignment, ShiftCode } from '../core/types';
 import { Icon, Modal, useToast } from '../shared/ui';
+import { useWide } from './util';
+import { PlanChat, impactOf, runChanges } from './PlanChat';
+import { PlanGrid, ReqModal } from './PlanGrid';
+import { Day } from './Day';
+import type { Go } from './util';
+import { needSkillsFor } from '../core/roster';
+import { SKILLS } from '../core/facility';
+import { fmtMin } from '../core/dates';
 
 const shiftMonth = (m: string, n: number) => { const [y, mm] = m.split('-').map(Number); const d = new Date(y, mm - 1 + n, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
 const SHORTS = SHIFT_ORDER.map((k) => SHIFTS[k].short);
@@ -29,12 +37,15 @@ function suggest(s: State, draft: Assignment[], date: string, shift: ShiftCode, 
     .sort((a, b) => Number(b.avail) - Number(a.avail) || a.cnt - b.cnt).slice(0, n);
 }
 
-export function Plan({ s, onOpen }: { s: State; onOpen?: (target: string) => void }) {
+export function Plan({ s, onOpen, go, openStaff, openResident }: { s: State; onOpen?: (target: string) => void; go: Go; openStaff: (id: string) => void; openResident: (id: string) => void }) {
   const [month, setMonth] = useState(s.plan?.month ?? s.collection.month);
   const [cell, setCell] = useState<{ staffId: string; date: string } | null>(null);
   const [dayM, setDayM] = useState<string | null>(null);
   const [pub, setPub] = useState(false);
   const [allSp, setAllSp] = useState(false);
+  const [dayFull, setDayFull] = useState<string | null>(null);
+  const [rq, setRq] = useState<{ staffId: string; date: string; shift: ShiftCode; unitId: string } | null>(null);
+  const dock = useWide(1100);
   const [toast, setToast] = useToast();
   const plan = s.plan && s.plan.month === month ? s.plan : undefined;
   const ro = plan?.status === 'published';
@@ -53,10 +64,13 @@ export function Plan({ s, onOpen }: { s: State; onOpen?: (target: string) => voi
   const spareBy = useMemo(() => { const m = new Map<string, string[]>(); for (const [d, l] of Object.entries(plan?.spares ?? {})) for (const x of l) (m.get(x.staffId) ?? m.set(x.staffId, []).get(x.staffId)!).push(d); return m; }, [plan?.spares]);
 
   const groups = UNITS.map((u) => ({ u, rows: STAFF.filter((x) => x.shifts.length && x.homeUnit === u.id) }));
+  const solvingNow = planSolving()?.month === month;
   const make = (nightMax?: number) => { createPlan(month, nightMax ? { nightMax } : {}); setToast('シフト案を作成しました'); };
 
   return (
     <div class="page scroll plan">
+      <div class={dock ? 'plandock' : undefined}>
+      <div class="plancol">
       <div class="ph">
         <div class="mnav"><button class="iconbtn" aria-label="前の月" onClick={() => setMonth(shiftMonth(month, -1))}><Icon n="chevron_left" /></button><h2>{month.slice(0, 4)}年{+month.slice(5)}月</h2><button class="iconbtn" aria-label="次の月" onClick={() => setMonth(shiftMonth(month, 1))}><Icon n="chevron_right" /></button></div>
         {plan && <div class="row" style="gap:8px"><span class={`chip ${ro ? 'ok' : 'warn'}`}>{ro ? '公開済み' : '作成中（未公開）'}</span><span class="small">作成 {plan.createdAt.slice(5, 16)}</span></div>}
@@ -65,27 +79,18 @@ export function Plan({ s, onOpen }: { s: State; onOpen?: (target: string) => voi
       <section class="card" style="margin-top:12px">
         <h3 class="h3">作る前の確認</h3>
         <div class="ready">
-          <div class="rcell"><b>{staffIds.length}/{total || '—'}</b>名<span class="small">希望休の提出{total ? `（締切 ${fmtMD(s.collection.deadline)}）` : '：この月は集めていません'}</span>{unsub > 0 && <button class="btn sm" style="margin-top:8px" onClick={() => { remindUnsubmitted(); setToast(`未提出の${unsub}名に催促を送りました`); }}>未提出者に催促</button>}</div>
+          <div class="rcell"><b>{staffIds.length}/{total || '—'}</b>名<span class="small">希望休の提出{total ? `（締切 ${fmtMD(s.collection.deadline)}）` : '：この月は集めていません'}</span>{unsub > 0 && <button class="btn sm" style="margin-top:8px" onClick={() => { const n = remindUnsubmitted(); setToast(`未提出の${n}名に催促を送りました。数秒後に数名が提出します`); }}>未提出者に催促</button>}{s.collection.remindedAt && <span class="small" style="margin-top:4px">催促済み {s.collection.remindedN}名（{s.collection.remindedAt.slice(11, 16)}）</span>}</div>
           <div class="rcell"><b>{availN}</b>件<span class="small">「入れる日」の登録（補欠になる人）</span></div>
           <div class="rcell"><b>{evs.length}</b>件<span class="small">行事{evs.length ? `：${evs.slice(0, 2).map((e) => `${+e.date.slice(8)}日 ${e.title}`).join('、')}${evs.length > 2 ? ' ほか' : ''}` : 'はありません'}</span></div>
         </div>
         <div class="row wrap" style="margin-top:16px;gap:8px">
-          <button class="btn pri" onClick={() => make()}><Icon n="auto_awesome" sm /> シフト作成君に作ってもらう</button>
-          <button class="btn" onClick={() => make(6)}>夜勤を減らして作る（月6回まで）</button>
+          <button class="btn pri" disabled={solvingNow} onClick={() => make()}><Icon n="auto_awesome" sm /> {solvingNow ? 'ソルバーで最適化中…' : 'シフト作成君に作ってもらう'}</button>
+          <button class="btn" disabled={solvingNow} onClick={() => make(6)}>夜勤を減らして作る（月6回まで）</button>
         </div>
-        <p class="small" style="margin-top:8px">希望休、入れる日、行事の必要人数、連勤・勤務間隔などの労務ルールを反映して作ります。作ったあとに確認・編集してから公開します。モック（Gemini は未接続）。</p>
+        {solvingNow && <p class="small" role="status" style="margin-top:8px">最適化ソルバー（CP-SAT）で1か月分を組み直しています。先に簡易計算の案を表示しています（数秒〜20秒ほど）。</p>}
+        <p class="small" style="margin-top:8px">希望休、入れる日、行事の必要人数、連勤・勤務間隔などの労務ルールを反映して作ります。作ったあとに確認・編集してから公開します。</p>
       </section>
 
-      {!plan && (
-        <section style="margin-top:12px"><h3 class="h3">シフト作成の流れ</h3>
-          <ol class="steps3" style="padding:0">
-            <li><span class="n">1</span><div><b style="font-weight:500">希望を集める</b><div class="small">希望休と「入れる日」を、従業員がシフト作成君から提出します。</div></div></li>
-            <li><span class="n">2</span><div><b style="font-weight:500">シフト作成君が作る</b><div class="small">上のボタンで、希望・行事・労務ルールを反映した案を作ります。</div></div></li>
-            <li><span class="n">3</span><div><b style="font-weight:500">確認して公開</b><div class="small">不足日や警告を見て、必要なところを直してから公開します。</div></div></li>
-          </ol>
-          <p class="muted" style="margin-top:12px">{s.plan ? `作成中のシフトは${+s.plan.month.slice(5)}月分です。` : 'まだシフト案がありません。'}</p>
-        </section>
-      )}
 
       {plan && <>
         <h3 class="h3" style="margin:20px 0 8px">できあがりの確認</h3>
@@ -99,21 +104,8 @@ export function Plan({ s, onOpen }: { s: State; onOpen?: (target: string) => voi
         <ul class="small" style="margin:8px 0 0 18px;color:var(--tx)">{plan.notes.map((n) => <li key={n}>{n}</li>)}</ul>
 
         <div class="stack" style="margin-top:16px;gap:12px">
-          <details class="acc" open><summary>勤務表（職員×日）<span class="small" style="font-weight:400">{ro ? '公開済み：変更は月間・日次から' : 'マスをタップして直せます。日付をタップすると、その日の詳細'}</span></summary>
-            <div class="accbody">
-              <div class="legend"><span class="lgt"><span class="t sh-早" style="width:22px;height:20px;display:inline-flex;align-items:center;justify-content:center;border-radius:5px">{SHORTS[0]}</span>早番</span><span class="lgt"><span class="sh-日" style="width:22px;height:20px;display:inline-flex;align-items:center;justify-content:center;border-radius:5px">{SHORTS[1]}</span>日勤</span><span class="lgt"><span class="sh-遅" style="width:22px;height:20px;display:inline-flex;align-items:center;justify-content:center;border-radius:5px">{SHORTS[2]}</span>遅番</span><span class="lgt"><span class="sh-夜" style="width:22px;height:20px;display:inline-flex;align-items:center;justify-content:center;border-radius:5px">{SHORTS[3]}</span>夜勤</span><span class="lgt"><span style="color:var(--ok);outline:1px dashed var(--ok);border-radius:5px;padding:0 5px">休</span>希望休を反映</span><span class="lgt"><span style="width:12px;height:4px;background:var(--bad);display:inline-block;border-radius:2px" />人が足りない日</span><span class="lgt"><span style="width:6px;height:6px;border-radius:50%;background:var(--pri);display:inline-block" />行事の日</span></div>
-              {groups.map(({ u, rows }) => (
-                <details key={u.id} class="acc" style="margin-top:8px" open={u.id === 'U1'}><summary>{u.floor}階 {u.name}（所属 {rows.length}名）</summary>
-                  <div class="accbody pgrid-wrap">
-                    <table class={`pgrid${ro ? ' ro' : ''}`}>
-                      <thead><tr><th class="nm">職員</th>{days.map((d) => { const w = dow(d); const sm = sums.get(d); const hol = holidayOf(d); return <th key={d} class={`dh${w === 0 ? ' sun' : w === 6 ? ' sat' : ''}${hol ? ' hol hol-col' : ''}${sm?.level === 'short' ? ' short' : sm?.level === 'warn' ? ' warn' : ''}`} onClick={() => setDayM(d)} title={hol ?? ''}><span class="d">{+d.slice(8)}</span><span class="w">{DOW_JA[w]}</span><span class="bar" />{eventsOn(s.events, d).length > 0 && <span class="ev" />}</th>; })}</tr></thead>
-                      <tbody>{rows.map((st) => { const off = dayOffOf(st.id); return <tr key={st.id}><td class="nm"><button class="link" style="font-size:13px" onClick={() => undefined}>{st.name}</button></td>{days.map((d) => { const a = idx.get(`${st.id}|${d}`); const ake = !a && plan.draft.some((x) => x.staffId === st.id && x.shift === '夜勤' && x.date === addDays(d, -1)); const wantOff = off.includes(d);
-                        return <td key={d} class={`c${holidayOf(d) ? ' hol-col' : ''}`} onClick={() => !ro && setCell({ staffId: st.id, date: d })}>{a ? <span class={`t sh-${letterOf(a.shift)}${wantOff ? ' conf' : ''}`} title={`${a.shift}／${unitName(a.unitId)}${wantOff ? '（希望休の日）' : ''}`}>{letterOf(a.shift)}</span> : ake ? <span class="ake">明</span> : wantOff ? <span class="t hope">休</span> : <span class="off">・</span>}</td>; })}</tr>; })}</tbody>
-                    </table>
-                  </div>
-                </details>))}
-            </div>
-          </details>
+          <ShortList s={s} plan={plan} days={days} sums={sums} onDay={setDayFull} />
+          <PlanGrid s={s} plan={plan} month={month} days={days} ro={!!ro} sums={sums as never} onDay={setDayFull} onCell={(staffId, date) => setCell({ staffId, date })} onToast={setToast} />
 
           <details class="acc"><summary>補欠（欠員のとき、最優先で打診する人）</summary>
             <div class="accbody"><p class="small" style="margin-bottom:8px">「入れる日」を出したが、このシフトでは勤務に入らない人です。欠員が出たときは、まずこの人たちに打診します（順番は公平に回します）。</p>
@@ -137,6 +129,15 @@ export function Plan({ s, onOpen }: { s: State; onOpen?: (target: string) => voi
         </div>
       </>}
 
+      </div>
+      {dock && <PlanChat s={s} month={month} onDone={setToast} />}
+      </div>
+      {!dock && <details class="card" style="margin-top:16px"><summary class="h3" style="cursor:pointer">シフト作成君に話して直す</summary><PlanChat s={s} month={month} onDone={setToast} /></details>}
+      {dayFull && plan && <div class="dayfull" role="dialog" aria-label={`${fmtMD(dayFull)}の1日表示`}>
+        <div class="dayfull-h"><b style="font-weight:500">作成中のシフト案での1日表示（{fmtMD(dayFull)}）</b><span class="small">1日タブと同じ画面です。不足は下の「配置の検証」に出ます</span>
+          <span style="flex:1" />{!ro && <button class="btn sm pri" onClick={() => { const d = dayFull; setDayM(d); }}><Icon n="edit" sm /> この日の枠を直す・依頼する</button>}<button class="btn sm" onClick={() => setDayFull(null)}><Icon n="close" sm /> 閉じる</button></div>
+        <div class="dayfull-b"><Day s={{ ...s, assignments: plan.draft }} date={dayFull} go={(view, o) => { if (view === 'day' && o?.date) setDayFull(o.date); else { setDayFull(null); go(view, o); } }} openStaff={openStaff} openResident={openResident} /></div></div>}
+      {rq && <ReqModal s={s} staffId={rq.staffId} date={rq.date} shift={rq.shift} unitId={rq.unitId} kind="work" onClose={() => setRq(null)} onSent={setToast} />}
       {cell && plan && <CellModal s={s} plan={plan} month={month} staffId={cell.staffId} date={cell.date} onClose={() => setCell(null)} onDone={(t) => { setCell(null); setToast(t); }} />}
       {dayM && plan && <DayModal s={s} plan={plan} month={month} date={dayM} ro={ro} onClose={() => setDayM(null)} onPick={(id) => { setDayM(null); setCell({ staffId: id, date: dayM }); }} onToast={setToast} />}
       {pub && plan && <Modal title="このシフトを公開しますか？" onClose={() => setPub(false)} footer={<><button class="btn" onClick={() => setPub(false)}>戻る</button><button class="btn pri" onClick={() => { publishPlan(); setPub(false); setToast('シフトを公開しました'); }}>公開する</button></>}>
@@ -199,6 +200,10 @@ function CellModal({ s, plan, month, staffId, date, onClose, onDone }: { s: Stat
 function DayModal({ s, plan, month, date, ro, onClose, onPick, onToast }: { s: State; plan: NonNullable<State['plan']>; month: string; date: string; ro: boolean; onClose: () => void; onPick: (id: string) => void; onToast: (t: string) => void }) {
   const hol = holidayOf(date); const evs = eventsOn(s.events, date); const sm = summarizeDay(plan.draft, date, s.events);
   const spares = plan.spares[date] ?? [];
+  const [slot, setSlot] = useState<string>(() => { for (const sh of SHIFT_ORDER) for (const u of UNITS) if (!plan.draft.some((a) => a.date === date && a.shift === sh && a.unitId === u.id && a.status !== 'absent')) return `${sh}|${u.id}`; return `${SHIFT_ORDER[0]}|${UNITS[0].id}`; });
+  const [sSh, sU] = slot.split('|') as [ShiftCode, string];
+  const slotCands = useMemo(() => suggest(s, plan.draft, date, sSh, month, 6).map((c) => ({ ...c, imp: impactOf(s, plan.draft, [{ date, shift: sSh, unitId: sU, staffId: c.staff.id }], month) })), [slot, plan.draft]);
+  const cur = plan.draft.filter((a) => a.date === date && a.shift === sSh && a.unitId === sU && a.status !== 'absent');
   return (
     <Modal title={`${fmtMD(date)}${hol ? `（${hol}）` : ''}`} onClose={onClose}>
       {evs.map((e) => <p key={e.id} class="small" style="margin-bottom:4px"><span class="chip pri">{e.kind}</span> {e.title}{e.effect ? `　${e.effect.allStaff ? '対象の勤務帯は全員参加' : e.effect.extra ? `${e.effect.shifts.join('・')}に+${e.effect.extra}名` : ''}` : ''}</p>)}
@@ -217,9 +222,39 @@ function DayModal({ s, plan, month, date, ro, onClose, onPick, onToast }: { s: S
         </>)}
       </div>
       {!ro && <p class="small" style="margin-top:8px">空き枠の下の「＋名前」で入れられます。★は「入れる日」を出した人です。</p>}
+      {!ro && <><div class="sec-title">手動で直す（候補と、入れた後の変化）</div>
+        <div class="choice">{SHIFT_ORDER.flatMap((sh) => UNITS.map((u) => { const n = plan.draft.filter((a) => a.date === date && a.shift === sh && a.unitId === u.id && a.status !== 'absent').length; const k = `${sh}|${u.id}`;
+          return <button key={k} aria-pressed={slot === k} onClick={() => setSlot(k)}>{sh}・{u.name}{n ? '' : '（空き）'}</button>; }))}</div>
+        <p class="small" style="margin:6px 0">{sSh}（{unitName(sU)}）：いまの担当 {cur.length ? cur.map((a) => staffById(a.staffId).name).join('、') : 'なし（空き）'}{cur.length ? '。入れると、いまの担当は外れます。' : ''}</p>
+        <div class="stack" style="gap:8px">{slotCands.map((c) => <div key={c.staff.id} class="cand"><div style="flex:1;min-width:0"><div class="row" style="gap:6px;flex-wrap:wrap"><b style="font-weight:500">{c.staff.name}</b><span class="small">{c.staff.role}</span>{c.avail && <span class="chip pri">入れる日を出した人</span>}{c.staff.homeUnit !== sU && <span class="chip">他ユニットから応援</span>}</div>
+          <ul class="small" style="margin:4px 0 0 16px">{c.imp.map((x) => <li key={x}>{x}</li>)}</ul></div>
+          <div class="row" style="gap:6px"><button class="btn sm pri" onClick={() => { runChanges([{ date, shift: sSh, unitId: sU, staffId: c.staff.id }]); onToast(`${c.staff.name}さんを${sSh}（${unitName(sU)}）に入れました`); }}>入れる</button><button class="btn sm" onClick={() => { sendPlanRequest('work', c.staff.id, date, { shift: sSh, unitId: sU }); onToast(`${c.staff.name}さんに出勤を依頼しました`); }}>出勤を依頼</button></div></div>)}
+          {!slotCands.length && <p class="muted">入れられる人が見つかりません。</p>}</div></>}
       <div class="sec-title">補欠（入れる日を出した人）</div>
       {spares.length ? spares.map((x) => <div key={x.staffId} class="row-li"><span><b style="font-weight:500">{staffById(x.staffId).name}</b></span><span class="small">{x.shifts.join('・')}</span></div>) : <p class="muted">この日の補欠はいません。</p>}
     </Modal>
   );
 }
 void parseYmd;
+
+/** 不足の一覧（要対応と同じ見せ方）：いつ・どこで・何が（人数／スキル）足りないか */
+function ShortList({ s, plan, days, sums, onDay }: { s: State; plan: NonNullable<State['plan']>; days: string[]; sums: Map<string, { level: string; vacant: number; issues: { t0: number; t1: number; scope: string; need: number; have: number; kind: string; text: string }[] }>; onDay: (d: string) => void }) {
+  const [all, setAll] = useState(false);
+  const rows = useMemo(() => days.flatMap((d) => {
+    const sm = sums.get(d); if (!sm) return [];
+    const slots = SHIFT_ORDER.flatMap((sh) => UNITS.filter((u) => !plan.draft.some((a) => a.date === d && a.shift === sh && a.unitId === u.id && a.status !== 'absent')).map((u) => ({ kind: 'slot' as const, date: d, text: `${sh} ${u.name}の担当がいません`, sub: (() => { const sk = needSkillsFor(plan.draft, d, sh, u.id).filter((k) => k !== 'night'); return sk.length ? `必須：${sk.map((k) => SKILLS[k].label).join('・')}` : ''; })(), shift: sh as ShiftCode, unitId: u.id })));
+    const iss = sm.issues.map((i) => ({ kind: i.kind === 'skill' ? ('skill' as const) : ('head' as const), date: d, text: `${fmtMin(i.t0)}〜${fmtMin(i.t1)} ${i.scope}：${i.text}`, sub: `必要 ${i.need}／現在 ${i.have}`, shift: undefined as ShiftCode | undefined, unitId: undefined as string | undefined }));
+    return [...slots, ...iss];
+  }), [days, sums, plan.draft]);
+  if (!rows.length) return <section class="card"><h3 class="h3">不足（時間・スキル）</h3><p class="muted" style="margin-top:6px">人数・スキルの不足はありません。</p></section>;
+  const shown = all ? rows : rows.slice(0, 8);
+  return (
+    <section class="card" id="plan-short">
+      <div class="row spread wrap"><h3 class="h3">不足（時間・スキル）<span class="chip bad" style="margin-left:8px">{rows.length}件</span></h3><span class="small">行をタップすると、その日の1日表示（候補と依頼もそこから）</span></div>
+      <div class="stack" style="gap:6px;margin-top:8px">{shown.map((r, i) => <button key={i} class="vitem" onClick={() => onDay(r.date)}>
+        <div class="row spread"><b style="font-weight:500">{fmtMD(r.date)}（{DOW_JA[dow(r.date)]}）</b><span class={`chip ${r.kind === 'skill' ? 'bad' : r.kind === 'slot' ? 'bad' : 'warn'}`}>{r.kind === 'skill' ? 'スキル不足' : r.kind === 'slot' ? '担当なし' : '人数不足'}</span></div>
+        <div class="small">{r.text}{r.sub ? `／${r.sub}` : ''}</div></button>)}</div>
+      {rows.length > 8 && <button class="btn sm" style="margin-top:8px" onClick={() => setAll(!all)}>{all ? '閉じる' : `すべて見る（${rows.length}件）`}</button>}
+    </section>
+  );
+}

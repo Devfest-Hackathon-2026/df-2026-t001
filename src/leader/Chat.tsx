@@ -90,7 +90,7 @@ function AiConv({ s, onBack, onOpen }: { s: State; onBack?: () => void; onOpen?:
   const send = (t: string) => { askLeaderAI(t); setText(''); };
   return (
     <div class="cmain">
-      <div class="chead">{onBack && <Back onClick={onBack} label="" />}<div><b style="font-weight:500">{AI_THREAD.name}</b><div class="small">宛先：シフト作成君（Gemini は未接続・モック）</div></div></div>
+      <div class="chead">{onBack && <Back onClick={onBack} label="" />}<div><b style="font-weight:500">{AI_THREAD.name}</b><div class="small">宛先：シフト作成君</div></div></div>
       <div class="cbody scroll">
         {msgs.length === 0 && <div class="empty" style="text-align:center"><Icon n="smart_toy" /><p style="margin-top:8px">聞く・頼む・シフトを作る、が普通の言葉でできます。実行の前に必ず確認します。</p>
           <div class="aisug">{LEADER_SUGGESTIONS.map((q) => <button key={q} onClick={() => send(q)}>{q}</button>)}</div></div>}

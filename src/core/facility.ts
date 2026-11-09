@@ -74,7 +74,7 @@ export const STAFF: Staff[] = [
   S(6, '高橋 美穂', 'たかはし みほ', 38, 12, '介護福祉士', '常勤', ['medical', 'dementia', 'night', 'ict'], ALL, 'U3'),
   S(7, '渡辺 光', 'わたなべ ひかる', 27, 4, '介護職員', '常勤', ['night', 'bath', 'driver'], ALL, 'U4'),
   S(8, '中島 里奈', 'なかじま りな', 31, 7, '介護福祉士', '常勤', ['medical', 'night', 'swallow', 'dementia'], ALL, 'U4'),
-  S(9, '加藤 誠', 'かとう まこと', 45, 18, '介護福祉士', '常勤', ['night', 'terminal', 'bath', 'follow', 'driver'], ALL, 'U1'),
+  S(9, '加藤 誠', 'かとう まこと', 45, 18, '介護福祉士', '常勤', ['night', 'terminal', 'bath', 'follow', 'driver', 'dementia'], ALL, 'U1'),
   S(10, '吉田 菜々', 'よしだ なな', 24, 2, '介護職員', '常勤', ['night', 'bath'], ALL, 'U2'),
   S(11, '山田 拓也', 'やまだ たくや', 35, 10, '介護福祉士', '常勤', ['medical', 'night', 'dementia', 'bath'], ALL, 'U3'),
   S(12, '松本 沙織', 'まつもと さおり', 39, 13, '介護福祉士', '常勤', ['dementia', 'swallow', 'ict', 'follow'], DAY, 'U4'),

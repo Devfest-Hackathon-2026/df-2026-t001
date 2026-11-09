@@ -26,14 +26,16 @@ export function SkillWhy({ reasons }: { reasons: SkillReason[] }) {
       {reasons.map((r) => (
         <div key={r.skill + r.level} class="skwhy">
           <div class="row" style="gap:6px"><span class={`chip ${r.level === '必須' ? 'bad' : 'pri'}`}>{r.level}</span><b style="font-weight:500">{SKILLS[r.skill].label}</b></div>
-          <div class="small" style="margin-top:2px;color:var(--tx)">{r.why}</div>
+          <div class="small" style="margin-top:4px;color:var(--tx)"><b style="font-weight:500">なぜ必要？</b> {r.why}</div>
+          <div class="small" style="margin-top:2px"><b style="font-weight:500">目安の資格・経験：</b>{SKILLS[r.skill].note}</div>
+          <div class="small" style="margin-top:2px">{r.level === '必須' ? '応募者がこのスキルを持っていない場合は「不適合」と表示し、採用できません。' : '持っていると優先して案内します（なくても応募できます）。'}</div>
         </div>
       ))}
     </div>
   );
 }
 
-/** 求人サイト風の掲載プレビュー（モック：外部には送信されない） */
+/** 求人サイト風の掲載プレビュー */
 export function JobPreview({ v, text, reward, reasons }: { v: Vacancy; text: string; reward: string; reasons: SkillReason[] }) {
   const u = UNITS.find((x) => x.id === v.unitId)!;
   const req = reasons.filter((r) => r.level === '必須'); const wel = reasons.filter((r) => r.level === '歓迎');
@@ -54,7 +56,7 @@ export function JobPreview({ v, text, reward, reasons }: { v: Vacancy; text: str
         <dt>歓迎スキル</dt><dd class="row wrap" style="gap:4px">{wel.length ? wel.map((r) => <span key={r.skill} class="chip pri">{SKILLS[r.skill].label}</span>) : <span class="muted">なし</span>}</dd>
       </dl>
       <div class="jobbody">{body.map((l, i) => <p key={i}>{l}</p>)}</div>
-      <button class="btn block" disabled>応募する（モック）</button>
+      <button class="btn block" disabled>応募する</button>
     </div>
   );
 }

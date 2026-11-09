@@ -8,6 +8,7 @@ from ..service import ServiceError, Svc, month_obj
 from . import chat as chat_mod
 from . import explain as explain_mod
 from . import translate as tr
+from . import planintent as pi
 from .llm import FAST_MODEL, PRO_MODEL, AIError, LLM
 from .privacy import Masker, pseudonymize
 
@@ -21,17 +22,21 @@ class AIService:
         self.svc, self.llm, self.masker, self.analytics = svc, llm, masker or Masker(), analytics
         self.daily_limit = int(os.getenv("AI_DAILY_LIMIT", "300"))
         self.ip_limit = int(os.getenv("AI_IP_DAILY_LIMIT", "20"))
+        self.intent_ip_limit = int(os.getenv("AI_INTENT_IP_DAILY_LIMIT", "150"))
+        self.intent_daily_limit = int(os.getenv("AI_INTENT_DAILY_LIMIT", "2000"))
 
     # ---------------------------------------------------------------- 上限
-    def guard(self, ip: str) -> None:
-        """全体・IP ごとの1日の上限。超えたら 429。カウンタは Firestore（aiUsage）で共有する。"""
+    def guard(self, ip: str, kind: str = "ai") -> None:
+        """全体・IP ごとの1日の上限。超えたら 429。カウンタは Firestore（aiUsage）で共有する。
+        kind="intent" は短い言葉の分類（軽い呼び出し）で、説明・チャット・ルール翻訳とは別の、広い枠で数える。"""
         day = datetime.now(JST).strftime("%Y-%m-%d")
         import hashlib
 
         ipk = hashlib.sha256(ip.encode()).hexdigest()[:16]
-        if not self.svc.repo.incr_usage(f"{day}_ip_{ipk}", self.ip_limit):
-            raise ServiceError(429, f"AI の利用は1日{self.ip_limit}回までです。明日またお試しください")
-        if not self.svc.repo.incr_usage(day, self.daily_limit):
+        pre, ip_lim, all_lim = ("", self.ip_limit, self.daily_limit) if kind == "ai" else ("intent_", self.intent_ip_limit, self.intent_daily_limit)
+        if not self.svc.repo.incr_usage(f"{day}_{pre}ip_{ipk}", ip_lim):
+            raise ServiceError(429, f"AI の利用は1日{ip_lim}回までです。明日またお試しください")
+        if not self.svc.repo.incr_usage(f"{day}{'_' + pre.rstrip('_') if pre else ''}", all_lim):
             raise ServiceError(429, "本日の AI の利用上限に達しました。明日またお試しください")
 
     def _input(self, text: str, fid: str) -> tuple[str, dict[str, str]]:
@@ -119,3 +124,50 @@ class AIService:
         self._log(fid, "chat", r.usage, tools=[t["tool"] for t in r.trace])
         return {"facility_id": fid, "month": month, "model": FAST_MODEL, "reply": r.text, "proposals": tools.proposals,
                 "tool_trace": r.trace, "note": "proposals は実行されていません。実行するかは人が決めます"}
+
+
+def _classify(self: AIService, schema, system: str, prompt: str, *, ip: str, feature: str):
+    self.guard(ip, "intent")
+    try:
+        out, usage = self.llm.structured(model=FAST_MODEL, system=system, prompt=prompt, schema=schema, max_tokens=1024, thinking="low")
+    except AIError as e:
+        raise ServiceError(503, f"AI で解釈できませんでした: {e}") from e
+    self.svc.events.emit("plan", "ai_call", {"feature": feature, "models": [usage.model], "input_tokens": usage.input_tokens,
+                                             "output_tokens": usage.output_tokens, "thinking_tokens": usage.thinking_tokens, "ms": usage.ms})
+    return out, usage
+
+
+def _clean(self: AIService, text: str) -> str:
+    text = (text or "").strip()
+    if not text:
+        raise ServiceError(400, "文章が空です")
+    if len(text) > 300:
+        raise ServiceError(400, "文章が長すぎます（300文字まで）")
+    try:
+        return self.masker.mask(text)
+    except AIError as e:
+        raise ServiceError(503, str(e)) from e
+
+
+def _plan_intent(self: AIService, text: str, *, month: str, today: str, staff: list[dict], units: list[dict], ip: str) -> dict:
+    safe = _clean(self, text)
+    intent, usage = _classify(self, pi.PlanIntent, pi.SYSTEM, pi.build_prompt(safe, month, today, staff, units), ip=ip, feature="plan_intent")
+    intent = pi.sanitize(intent, month, {s["id"] for s in staff}, {u["id"] for u in units})
+    return {"model": usage.model, "intent": intent.model_dump(), "note": "勤務表は変えていません。画面側で確認してから反映します"}
+
+
+def _leader_intent(self: AIService, text: str, *, today: str, ip: str) -> dict:
+    safe = _clean(self, text)
+    intent, usage = _classify(self, pi.LeaderIntent, pi.LEADER_SYSTEM, f"今日: {today}\nリーダーの言葉: 「{safe}」\n\nこの言葉を1つの操作に分類する。", ip=ip, feature="leader_intent")
+    return {"model": usage.model, "intent": pi.sanitize_leader(intent, today).model_dump(), "note": "何も実行していません。画面側で確認してから行います"}
+
+
+def _employee_intent(self: AIService, text: str, *, today: str, ip: str) -> dict:
+    safe = _clean(self, text)
+    intent, usage = _classify(self, pi.EmployeeIntent, pi.EMPLOYEE_SYSTEM, f"今日: {today}\n職員の言葉: 「{safe}」\n\nこの言葉を分類する。", ip=ip, feature="employee_intent")
+    return {"model": usage.model, "intent": pi.sanitize_employee(intent, today).model_dump(), "note": "勤務表は変えていません。提案として本人とリーダーが確認します"}
+
+
+AIService.plan_intent = _plan_intent  # type: ignore[attr-defined]
+AIService.leader_intent = _leader_intent  # type: ignore[attr-defined]
+AIService.employee_intent = _employee_intent  # type: ignore[attr-defined]

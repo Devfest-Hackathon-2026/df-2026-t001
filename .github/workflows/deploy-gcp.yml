@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-gcp
+  group: deploy-gcp-hosting
   cancel-in-progress: true
 
 env:

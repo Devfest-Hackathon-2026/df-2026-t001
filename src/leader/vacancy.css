@@ -17,3 +17,7 @@
 @media (max-width: 560px) { .fgrid { grid-template-columns: 84px 1fr; } .fboard { padding: 10px; } }
 .fgrid .mtrack.axis .tick:first-child { transform: none; }
 .fgrid .mtrack.axis .tick:last-child { transform: translateX(-100%); }
+.mrow { position: relative; touch-action: none; }
+.hnd { position: absolute; top: -3px; bottom: -3px; width: 18px; margin-left: -9px; cursor: ew-resize; touch-action: none; z-index: 3; display: flex; align-items: center; justify-content: center; }
+.hnd i { width: 6px; height: 100%; border-radius: 3px; background: var(--pri, #1a73e8); box-shadow: 0 0 0 2px var(--bg, #fff); }
+.hnd:focus-visible i { outline: 2px solid var(--tx); }

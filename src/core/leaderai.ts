@@ -6,7 +6,7 @@ import { rankCandidates } from './roster';
 import { staffById, unitName, SKILLS } from './facility';
 import type { ShiftCode } from './types';
 
-export interface LeaderReply { text: string; links?: { label: string; target: string }[]; action?: { kind: 'delegate' | 'remind' | 'approveRequests' | 'createPlan' | 'publishPlan'; args: Record<string, unknown>; label: string; detail: string } }
+export interface LeaderReply { unknown?: boolean; text: string; links?: { label: string; target: string }[]; action?: { kind: 'delegate' | 'remind' | 'approveRequests' | 'createPlan' | 'publishPlan'; args: Record<string, unknown>; label: string; detail: string } }
 const shiftOf = (t: string): ShiftCode | undefined => (/夜勤|夜/.test(t) ? '夜勤' : /早番|朝/.test(t) ? '早番' : /遅番/.test(t) ? '遅番' : /日勤/.test(t) ? '日勤' : undefined);
 
 export const LEADER_SUGGESTIONS = ['今日の状況をまとめて', '明日の欠員は？', '11/24の日勤に誰が入れる？', '今日体調の悪い人は？', '申請を承認して任せて', '12月のシフトを作って', '夜勤を減らして12月のシフトを作り直して', '希望休の未提出者に催促を送って'];
@@ -65,5 +65,5 @@ export function interpretLeader(raw: string, s: State): LeaderReply {
     const miss = Object.values(s.collection.submitted).filter((v) => !v).length;
     return { text: `今日（${fmtMD(s.today)}）のまとめです。\n・勤務予定：${duty}名\n・欠員：${open.length}件（うち自動対応中${open.filter((v) => v.auto?.mode === 'running').length}件）\n・承認待ちの申請：${pending.length}件\n・時間調整・求人の承認待ち：${open.filter((v) => v.auto?.mode === 'waiting_adjust' || v.auto?.mode === 'waiting_post').length}件\n・希望休の未提出：${miss}名`, links: [{ label: '要対応を開く', target: 'vacancies' }] };
   }
-  return { text: '次のようなことを聞いたり、頼んだりできます。\n・「今日の状況をまとめて」\n・「明日の欠員は？」「11/24の日勤に誰が入れる？」\n・「今日体調の悪い人は？」\n・「申請を承認して任せて」「希望休の未提出者に催促を送って」\n・「12月のシフトを作って」「夜勤を減らして作り直して」' };
+  return { unknown: true, text: '次のようなことを聞いたり、頼んだりできます。\n・「今日の状況をまとめて」\n・「明日の欠員は？」「11/24の日勤に誰が入れる？」\n・「今日体調の悪い人は？」\n・「申請を承認して任せて」「希望休の未提出者に催促を送って」\n・「12月のシフトを作って」「夜勤を減らして作り直して」' };
 }

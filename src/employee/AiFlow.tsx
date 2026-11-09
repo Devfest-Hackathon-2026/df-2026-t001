@@ -1,4 +1,6 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
+import { composeEmployee, type ComposeIn } from '../core/aiintent';
+import { proposeFromText } from '../core/shiftmaker';
 import type { State } from '../core/store';
 import { askShiftMaker } from '../core/store';
 import { MY_ID, SHIFTS, TASKS, TASK_GROUPS, unitName } from '../core/facility';
@@ -19,7 +21,7 @@ export const ACTIONS: { k: K; label: string; icon: string; hint: string; legacy?
   { k: '退勤', label: '退勤時刻の希望', icon: 'directions_car', hint: '帰る時刻の上限' },
   { k: '入れる日', label: '入れる日を出す', icon: 'event_available', hint: '欠員が出たら優先して連絡', legacy: true },
 ];
-const REASONS = ['体調不良', '子どもの送迎', '通院', '家族の事情', '私用'];
+const REASONS = ['体調不良', '子どもの送迎', '子どもの熱', '通院', '家族の事情', '私用'];
 
 export function ActionGrid({ onPick }: { onPick: (k: K) => void }) {
   return (
@@ -62,12 +64,29 @@ export function AiSheet({ s, kind, onClose, onSent }: { s: State; kind: K; onClo
     return '';
   })();
 
+  // Gemini が整えた文。取得中・失敗・無効のときは定型文（sentence）をそのまま使う
+  const cKind = kind === '休み' || kind === '遅刻' || kind === '早退' ? kind : null;
+  const cReq: ComposeIn | null = cKind && sentence && date && asg && reason ? { kind: cKind, date, shift: asg.shift, reason, ...(kind === '遅刻' && mins ? { detail: `${mins}分遅れ` } : {}), ...(kind === '早退' && time ? { detail: `${time}退勤` } : {}) } : null;
+  const cKey = cReq ? JSON.stringify(cReq) : '';
+  const [composed, setComposed] = useState<{ key: string; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!cReq) { setBusy(false); return; }
+    const ctl = new AbortController(); let live = true; setBusy(true);
+    composeEmployee(cReq, ctl.signal).then((t) => { if (!live) return; setBusy(false); if (t) setComposed({ key: cKey, text: t }); });
+    return () => { live = false; ctl.abort(); };
+  }, [cKey]);
+  // 既存のルールで定型文と同じ内容（種類・日付）に読めない文は使わず、定型文に戻す
+  const sig = (t: string) => proposeFromText(t, MY_ID, s.today, s.assignments, s.collection.month).items.map((i) => `${i.type}${i.kind ?? ''}${i.date ?? ''}`).join();
+  const aiText = composed && composed.key === cKey && cReq && sig(composed.text) === sig(sentence) ? composed.text : '';
+  const shown = aiText || sentence;
+
   const title = ACTIONS.find((a) => a.k === kind)!.label;
   const canPickDay = (d: string) => (kind === '入れる日' ? d > s.today && !(myAssign(s, d) && myAssign(s, d)!.status !== 'absent') : kind === '希望休' ? d > s.today : d >= s.today && !!myAssign(s, d) && myAssign(s, d)!.status !== 'absent');
   // 早退時刻候補：その日の業務ブロックの開始（夜勤は日付をまたがない範囲）
   const blockTimes = (row?.blocks ?? []).filter((b) => b.kind !== 'break' && b.kind !== 'nap' && b.start > (asg ? SHIFTS[asg.shift].start : 0));
 
-  const send = () => { askShiftMaker(MY_ID, sentence); onSent(); };
+  const send = () => { askShiftMaker(MY_ID, shown); onSent(); };
   return (
     <Modal title={title} onClose={onClose} footer={<><button class="btn" onClick={onClose}>やめる</button><button class="btn pri" disabled={!sentence} onClick={send}>シフト作成君に送る</button></>}>
       <div class="stack">
@@ -124,7 +143,7 @@ export function AiSheet({ s, kind, onClose, onSent }: { s: State; kind: K; onClo
             <div class="row" style="flex-wrap:wrap">{REASONS.map((r) => <button key={r} class={`opt${reason === r ? ' on' : ''}`} aria-pressed={reason === r} onClick={() => setReason(reason === r ? '' : r)}>{r}</button>)}</div>
           </div>
         )}
-        <div class="sum"><div class="small">シフト作成君に送る内容</div><div>{sentence || '選ぶとここに文章が表示されます'}</div></div>
+        <div class="sum"><div class="small">シフト作成君に送る内容</div><div>{shown || '選ぶとここに文章が表示されます'}</div>{aiText ? <div class="small" style="margin-top:4px"><Icon n="auto_awesome" sm /> AIが作成</div> : busy && sentence ? <div class="small" style="margin-top:4px;opacity:.6">AIで整えています…</div> : null}</div>
         <p class="small">送ると読み取り結果が表示されます。内容を確認して{kind === '入れる日' ? '「この内容で反映」を押すと登録されます（リーダーの承認は不要です）。' : '「この内容で反映」を押すまで、シフトは変わりません。'}</p>
         {void unitName}{void ymd}{void addDays}
       </div>

@@ -11,8 +11,10 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from . import guard
+from .ai.compose import register as register_compose
 from .ai.llm import GeminiLLM
 from .ai.service import AIService
+from .inline_solve import InlineSolveIn, solve_inline as _solve_inline
 from .learn.analytics import BQAnalytics
 from .learn.store import ModelStore
 from .service import ServiceError, Svc
@@ -258,6 +260,46 @@ def explain(fid: str, body: ExplainIn, req: Request):
     return ai().explain(fid, body.kind, month=body.month, date=body.date, ip=_ip(req))
 
 
+class PlanRef(BaseModel):
+    id: str = Field(max_length=40)
+    name: str = Field(max_length=40)
+
+
+class PlanIntentIn(BaseModel):
+    text: str = Field(min_length=1, max_length=300)
+    month: str = Field(pattern=r"^\d{4}-\d{2}$")
+    today: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    staff: list[PlanRef] = Field(max_length=80)
+    units: list[PlanRef] = Field(max_length=8)
+
+
+@app.post("/api/v1/plan-intent")
+def plan_intent(body: PlanIntentIn, req: Request):
+    """シフト作成チャットの言葉を、1つの操作に分類する（Gemini）。勤務表は変えない。画面側が検証して承認つきで反映する。"""
+    return ai().plan_intent(body.text, month=body.month, today=body.today, staff=[s.model_dump() for s in body.staff],
+                            units=[u.model_dump() for u in body.units], ip=_ip(req))
+
+
+class TextIn(BaseModel):
+    text: str = Field(min_length=1, max_length=300)
+    today: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+@app.post("/api/v1/leader-intent")
+def leader_intent(body: TextIn, req: Request):
+    """リーダー画面のチャットの言葉を、1つの操作に分類する（Gemini）。何も実行しない。"""
+    return ai().leader_intent(body.text, today=body.today, ip=_ip(req))
+
+
+@app.post("/api/v1/employee-intent")
+def employee_intent(body: TextIn, req: Request):
+    """職員の申請の言葉を、休み・遅刻・早退・変更・入れる日・毎回の希望に分類する（Gemini）。勤務表は変えない。"""
+    return ai().employee_intent(body.text, today=body.today, ip=_ip(req))
+
+
+register_compose(app, ai, _ip)   # POST /api/v1/employee-compose（care/ai/compose.py）
+
+
 @app.post("/api/v1/facilities/{fid}/chat")
 def chat(fid: str, body: ChatIn, req: Request):
     """施設のデータを調べて答える。表・欠員・ルールは変えない（提案だけ返す）。"""
@@ -286,3 +328,15 @@ def learned_rules(fid: str, month: str | None = None):
 @app.post("/api/v1/facilities/{fid}/learned-rules/dismiss")
 def dismiss_learned(fid: str, body: DismissIn):
     return svc().dismiss_learned(fid, body.key, body.reason)
+
+
+from . import inline_rank  # noqa: E402  画面の職員を、学習済みの応諾予測で並べる（状態なし）。POST /api/v1/rank-candidates
+
+inline_rank.register(app, lambda: _svc)
+
+# ---------------------------------------------------------------- 画面の職員データで月次を解く（保存しない）
+
+@app.post("/api/v1/solve-inline")
+async def solve_inline(body: InlineSolveIn):
+    """シフト作成君の『シフトを作る』。リクエストの職員・希望休・行事だけで CP-SAT を解いて表を返す。保存しない。"""
+    return await heavy(_solve_inline, body)

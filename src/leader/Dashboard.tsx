@@ -75,7 +75,7 @@ export function Dashboard({ s, go, openStaff }: { s: State; go: Go; openStaff: (
         <div class="stack" style="gap:6px;margin-top:8px">{upcoming.map((e) => <button key={e.id} class="evrow" onClick={() => go('day', { date: e.date })}><span class="evc" style={`background:${EVENT_STYLE[e.kind].bg};color:${EVENT_STYLE[e.kind].fg}`}>{fmtMD(e.date)}</span><span class="evt"><b>{e.title}</b>{effectText(e) && <span class="small" style="color:var(--pri-tx)">{effectText(e)}</span>}</span><Icon n="chevron_right" sm /></button>)}</div></section>}
       {auto.length > 0 && <details class="card" style="margin-top:12px"><summary>シフト作成君が自動反映した変更（{auto.length}件）</summary>
         <div class="stack" style="gap:8px;margin-top:8px">{auto.map((r) => <div key={r.id} class="small" style="color:var(--tx)">{staffById(r.staffId).name}：{fmtMD(r.date)} {r.kind}{r.detail ? `（${r.detail}）` : ''}</div>)}</div></details>}
-      <p class="small" style="margin-top:16px"><Icon n="info" sm /> すべて架空のデータです（モック・クラウド／Gemini 未接続）。</p>
+      <p class="small" style="margin-top:16px"><Icon n="info" sm /> すべて架空のデータです。</p>
     </div>
   );
 }

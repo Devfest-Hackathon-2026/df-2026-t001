@@ -5,11 +5,15 @@ import { applyAdjust, availFor, buildDay, canWork, coverage, generateBaseRoster,
 import type { Availability } from './roster';
 import { planMonth, finalize, computeSpares, monthEnd } from './planner';
 import type { Plan } from './planner';
+import { solveMonth, solverEnabled, solverNote } from './solverPlan';
 import { SEED_EVENTS } from './events';
 import type { FacilityEvent } from './events';
 import { interpretLeader } from './leaderai';
+import { askEmployee, askLeader, employeeSentence, leaderSentence } from './aiintent';
 import { applyKind, proposeFromText } from './shiftmaker';
 import { addDays, addMinutes, fmtMD, nowStamp, setSimNow, stampDay, stampMin, stampTime, toMin } from './dates';
+import { rankViaApi, reorderByAi } from './apirank';
+import type { AiRank } from './apirank';
 
 export interface Prefs { breakPref?: string; leaveBy?: string; leaveReason?: string; shiftHope: ShiftCode[]; history: { at: string; text: string }[]; }
 export interface Settings { push: boolean; mail: boolean; quietNight: boolean; textSize: 'standard' | 'large'; }
@@ -21,10 +25,13 @@ export interface State {
   prefs: Record<string, Prefs>; settings: Record<string, Settings>;
   collection: Collection; availability: Availability;
   plan?: Plan; events: FacilityEvent[]; spareUse: Record<string, number>;
+  paidLeave?: Record<string, string[]>; planRequests?: PlanReq[];
 }
-export interface Collection { month: string; deadline: string; submitted: Record<string, { at: string; dates: string[] } | null>; }
-const KEY = 'kana-care-state-v7';
-const VERSION = 7;
+export type PlanReqKind = 'work' | 'dayoff' | 'paid';
+export interface PlanReq { id: string; kind: PlanReqKind; staffId: string; date: string; shift?: ShiftCode; unitId?: string; status: 'pending' | 'accepted' | 'declined'; at: string; note?: string }
+export interface Collection { month: string; deadline: string; submitted: Record<string, { at: string; dates: string[] } | null>; remindedAt?: string; remindedN?: number; }
+const KEY = 'kana-care-state-v8';
+const VERSION = 8;
 let seq = 1000;
 const uid = (p: string) => `${p}-${Date.now().toString(36)}-${(seq++).toString(36)}`;
 
@@ -52,6 +59,8 @@ function seed(): State {
     { id: 'N3', to: 'leader', title: '出勤前チェック：未入力が多数', body: '今夜の夜勤4名のうち、体調チェック済みは0名です。', at: t('12:00'), read: false, kind: 'health' },
     { id: 'N4', to: 'leader', title: '欠員が3件あります', body: '11/22 遅番（つぼみ）・11/25 夜勤（ひなた）・11/27 早番（そよかぜ）', at: t('07:30'), read: false, kind: 'shift' },
   ];
+  // 動画の台本に合わせた固定データ：加藤さんが11/20の夜勤に入れるよう、前後の勤務を整える
+  assignments.forEach((a, i) => { if (a.staffId === 'EMP-009' && a.date === '2026-11-21' && a.shift === '早番') assignments[i] = { ...a, staffId: 'EMP-018' }; });
   const pick = (date: string, shift: ShiftCode) => assignments.find((a) => a.date === date && a.shift === shift && a.staffId !== MY_ID)!;
   const a1 = pick('2026-11-24', '日勤'); const a2 = pick('2026-11-19', '日勤');
   const requests: ShiftRequest[] = [
@@ -77,8 +86,8 @@ function seed(): State {
   }
   // デモで見やすいよう、欠員の日に「入れる日」を出していた人を用意する
   const pin = (id: string, d: string, k: ShiftCode) => { (availability[id] ??= []).push({ date: d, shifts: [k] }); };
-  pin('EMP-026', '2026-11-20', '夜勤'); pin('EMP-019', '2026-11-20', '夜勤'); pin('EMP-004', '2026-11-24', '日勤'); pin('EMP-012', '2026-11-22', '遅番');
-  return { v: VERSION, today: DEMO_TODAY, now: `${DEMO_TODAY} 14:00`, autopilot: { enabled: true, maxCandidates: 5, waitSameDay: 30, waitOther: 120, quietStart: '22:00', quietEnd: '07:00', defaultReward: '時給2,200円（単発）', useAdjust: true, adjustKinds: { break: true, support: true, extend: true }, priority: { availFirst: true, skill: 'normal', days: 'normal' }, jobNote: 'ユニット型の少人数ケア。仮眠・休憩は交代で確実に取れます。' }, assignments, vacancies: initialVacancies(assignments), requests, messages, notices, health, prefs, settings, collection: { month: '2026-12', deadline: '2026-11-25', submitted }, availability, events: SEED_EVENTS, spareUse: {} };
+  pin('EMP-026', '2026-11-20', '夜勤'); pin('EMP-009', '2026-11-20', '夜勤'); pin('EMP-019', '2026-11-20', '夜勤'); pin('EMP-004', '2026-11-24', '日勤'); pin('EMP-012', '2026-11-22', '遅番');
+  return { v: VERSION, today: DEMO_TODAY, now: `${DEMO_TODAY} 14:00`, autopilot: { enabled: true, maxCandidates: 5, waitSameDay: 30, waitOther: 120, quietStart: '22:00', quietEnd: '07:00', defaultReward: '時給2,200円（単発）', useAdjust: true, autoPost: true, adjustKinds: { break: true, support: true, extend: true }, priority: { availFirst: true, skill: 'normal', days: 'normal' }, jobNote: 'ユニット型の少人数ケア。仮眠・休憩は交代で確実に取れます。' }, assignments, vacancies: initialVacancies(assignments).map((v) => (v.date === '2026-11-25' && v.shift === '夜勤' ? { ...v, opts: { maxCandidates: 1 } } : v)), /* 動画用：この欠員は内部の候補を1人だけにして求人へ進める */ requests, messages, notices, health, prefs, settings, collection: { month: '2026-12', deadline: '2026-11-25', submitted }, availability, events: SEED_EVENTS, spareUse: {} };
 }
 
 let state: State = load();
@@ -154,7 +163,7 @@ export function decideRequest(id: string, ok: boolean, withAutopilot = false) {
     const r = state.requests.find((x) => x.id === id);
     const a = r && state.assignments.find((x) => x.staffId === r.staffId && x.date === r.date && x.status !== 'assigned');
     const v = a && state.vacancies.find((x) => x.fromAssignmentId === a.id && x.auto?.mode === 'ask');
-    if (v) approveAutopilot(v.id);
+    if (v) void delegateAutopilot(v.id);
   }
 }
 
@@ -163,14 +172,33 @@ export function sendMessage(thread: string, from: string, text: string, attachme
   if (!text.trim() && !attachments?.length) return;
   set((s) => ({ messages: [...s.messages, { id: uid('M'), thread, from, text: text.trim(), at: nowStamp(), attachments }], notices: thread === 'leader' && from !== LEADER_ID ? [notice({ to: 'leader', kind: 'info', title: `${staffById(from)?.name ?? from}さんからメッセージ`, body: text.trim().slice(0, 60), link: 'chat' }), ...s.notices] : s.notices }));
 }
+/** 打診が届いている人の自由記述の返事（「入れます」「難しいです」）を、打診への返答として扱う */
+function replyToPendingOffer(staffId: string, text: string): boolean {
+  const v = state.vacancies.find((x) => x.state !== 'filled' && x.offers.some((o) => o.staffId === staffId && o.status === 'pending')); if (!v) return false;
+  const yes = /入れ(る|ます)|はい|お願い(します)?/.test(text); const no = /難しい|無理|見送|断/.test(text);
+  if (yes === no) return false;
+  set((s) => ({ messages: [...s.messages, { id: uid('M'), thread: `ai:${staffId}`, from: staffId, text: text.trim(), at: nowStamp() }] }));
+  respondOffer(v.id, staffId, yes); return true;
+}
 export function askShiftMaker(staffId: string, text: string) {
   if (!text.trim()) return;
+  if (replyToPendingOffer(staffId, text)) return;
+  const known = proposeFromText(text, staffId, state.today, state.assignments, state.collection.month);
+  const unknown = known.items.every((i) => i.type === 'unknown');
+  const aid = uid('M');
   set((s) => {
-    const p = proposeFromText(text, staffId, s.today, s.assignments, s.collection.month);
     const u: ChatMessage = { id: uid('M'), thread: `ai:${staffId}`, from: staffId, text: text.trim(), at: nowStamp() };
-    const a: ChatMessage = { id: uid('M'), thread: `ai:${staffId}`, from: 'ai', text: p.summary, at: nowStamp(), proposal: p };
+    const a: ChatMessage = unknown ? { id: aid, thread: `ai:${staffId}`, from: 'ai', text: '内容を確認しています…', at: nowStamp() } : { id: aid, thread: `ai:${staffId}`, from: 'ai', text: known.summary, at: nowStamp(), proposal: known };
     return { messages: [...s.messages, u, a] };
   });
+  if (!unknown) return;
+  // ルールで読めない言葉は Gemini に分類してもらい、定型の文に直して同じ提案の流れに乗せる
+  const patch = (fn: (m: ChatMessage) => ChatMessage) => set((s) => ({ messages: s.messages.map((m) => (m.id === aid ? fn(m) : m)) }));
+  askEmployee(text.trim(), state.today).then((i) => {
+    const c = employeeSentence(i); const p = c ? proposeFromText(c, staffId, state.today, state.assignments, state.collection.month) : null;
+    if (p && !p.items.every((x) => x.type === 'unknown')) patch((m) => ({ ...m, text: p.summary, proposal: { ...p, raw: text.trim() } }));
+    else patch((m) => ({ ...m, text: i.reply || known.summary, proposal: known }));
+  }).catch((e: Error) => patch((m) => ({ ...m, text: `${e.message}\n日付と内容を入れて、もう一度送ってください（例：「11/20の夜勤を休みたい」）。`, proposal: known })));
 }
 export function confirmProposal(msgId: string, staffId: string) {
   set((s) => {
@@ -271,7 +299,7 @@ const nextQuietEnd = (now: string, a: AutopilotSettings) => { const day = stampM
 export function jobText(v: Vacancy, reward: string, note = 'ユニット型の少人数ケア。仮眠・休憩は交代で確実に取れます。') {
   const unit = UNITS_BY_ID(v.unitId);
   const skill = v.needSkills.length ? `\n必要スキル：${skillText(v.needSkills)}（要件確認済みの方）` : '';
-  return `【さくら苑｜${v.shift}スタッフ募集（単発）】\n日時：${fmtMD(v.date)} ${v.shift} ${SHIFT_LABEL[v.shift]}\n配属：${unit}\n資格：介護福祉士または実務者研修修了${skill}\n業務：食事・排泄・入浴介助、巡回、記録\n対価：${reward}\n職場：${note}\n※応募後に資格を確認します。この掲載文はモックで、実際の掲載・外部送信は行いません。`;
+  return `【さくら苑｜${v.shift}スタッフ募集（単発）】\n日時：${fmtMD(v.date)} ${v.shift} ${SHIFT_LABEL[v.shift]}\n配属：${unit}\n資格：介護福祉士または実務者研修修了${skill}\n業務：食事・排泄・入浴介助、巡回、記録\n対価：${reward}\n職場：${note}\n※応募後に資格を確認します。`;
 }
 import { SHIFTS as _SH, UNITS as _UN } from './facility';
 const SHIFT_LABEL: Record<ShiftCode, string> = Object.fromEntries(Object.entries(_SH).map(([k, v]) => [k, v.label])) as Record<ShiftCode, string>;
@@ -310,6 +338,12 @@ function draftPostS(s: State, id: string, why: string): State {
   const E = effSettings(s, v); const reward = E.defaultReward + (v.shift === '夜勤' ? '＋夜勤手当5,000円' : '');
   let t = patchV(s, id, (x) => ({ ...x, state: 'open', jobPost: { reward, text: jobText(x, reward, E.jobNote), status: 'draft' } }));
   t = autoS(t, id, { mode: 'waiting_post', waitUntil: undefined, pendingStaff: undefined });
+  if (E.autoPost) {
+    t = patchV(t, id, (x) => ({ ...x, state: 'posted', jobPost: { reward, text: x.jobPost?.text, status: 'posted', postedAt: s.now } }));
+    t = autoS(t, id, { mode: 'posted' });
+    t = logS(t, id, `${why}求人文を作成し、自動で掲載しました（掲載の取り消し・手動への切替はできます）`, 'ok');
+    return noticeS(t, { to: 'leader', kind: 'autopilot', title: `${v.id}：求人を自動で掲載しました`, body: `${vacLabel(v)}。内部の候補では埋まらなかったため、対価（${reward}）で求人を掲載しました。内容は欠員の詳細で確認できます。`, link: `autopilot:${id}` });
+  }
   t = logS(t, id, `${why}求人文を作成しました。掲載の承認をお願いします`, 'warn');
   return noticeS(t, { to: 'leader', kind: 'autopilot', title: `${v.id}：求人掲載の承認をお願いします`, body: `${vacLabel(v)}。内部の候補では埋まりませんでした。求人文と対価（${reward}）を確認してください。`, link: `autopilot:${id}` });
 }
@@ -330,21 +364,27 @@ function fillS(s: State, id: string, staffId: string, source: Assignment['source
   t = noticeS(t, { to: 'leader', kind: 'shift', title: `${id} が充足しました`, body: `${staffById(staffId).name}さんが${vacLabel(v)}に入ります。`, link: 'vacancy' });
   t = noticeS(t, { to: staffId, kind: 'shift', title: 'シフトが追加されました', body: `${vacLabel(v)}`, link: 'shift' });
   const who = requesterOf(s, v);
-  if (who && who !== staffId) t = aiSayS(t, who, `${fmtMD(v.date)}の${v.shift}は、${staffById(staffId).name}さんが代わりに入ることになりました。ゆっくり休んでください。`);
+  if (who && who !== staffId) {
+    t = aiSayS(t, who, `${fmtMD(v.date)}の${v.shift}は、${staffById(staffId).name}さんが代わりに入ることになりました。ゆっくり休んでください。`);
+    t = noticeS(t, { to: who, kind: 'shift', title: '代わりが決まりました', body: `${staffById(staffId).name}さんが${fmtMD(v.date)}の${v.shift}に入ります。`, link: 'shift' });
+  }
   return t;
 }
 
 /** リーダーが「自動で進める」を承認（打診人数・返信待ち時間はここで上書き可） */
-export function approveAutopilot(id: string, o: { max?: number; waitMin?: number } = {}) {
+export function approveAutopilot(id: string, o: { max?: number; waitMin?: number; ai?: AiRank } = {}) {
   set((s) => {
     const v = vac(s, id); if (!v) return {};
     const E = effSettings(s, v);
     const max = o.max ?? v.auto?.max ?? E.maxCandidates;
     const ranked = rankOf(s, v);
-    const queue = ranked.filter((c) => !c.blocked && !c.unfit && !v.offers.some((x) => x.staffId === c.staff.id)).slice(0, max).map((c) => c.staff.id);
+    // 打診してよい人は画面の判定で決め、学習済みモデル（o.ai）があれば、その中の順番だけを並べ替える
+    const okList = ranked.filter((c) => !c.blocked && !c.unfit && !v.offers.some((x) => x.staffId === c.staff.id));
+    const queue = reorderByAi(okList, o.ai, E.priority.availFirst).slice(0, max).map((c) => c.staff.id);
+    const prob = o.ai ? Object.fromEntries(okList.filter((c) => c.staff.id in o.ai!.prob).map((c) => [c.staff.id, o.ai!.prob[c.staff.id]])) : undefined;
     const unfit = ranked.filter((c) => !c.blocked && c.unfit);
     const req = requiredSkills(s.assignments, v);
-    let t = patchV(s, id, (x) => ({ ...x, needSkills: req, auto: { mode: 'running', queue, idx: 0, max, waitMin: o.waitMin, log: x.auto?.log ?? [] } }));
+    let t = patchV(s, id, (x) => ({ ...x, needSkills: req, auto: { mode: 'running', queue, idx: 0, max, waitMin: o.waitMin, log: x.auto?.log ?? [], ...(prob && Object.keys(prob).length ? { prob } : {}) } }));
     t = logS(t, id, 'リーダーがシフト作成君に任せました', 'ok');
     const who = requesterOf(t, v);
     // ① まず、時間をずらす調整（単独・組み合わせ）で足りるかを確認する
@@ -359,7 +399,8 @@ export function approveAutopilot(id: string, o: { max?: number; waitMin?: number
       t = logS(t, id, '時間をずらす調整だけでは足りないため、代わりの出勤者に打診します', 'info');
     }
     t = logS(t, id, `打診の前に、人数・必須スキル・休憩の交代・前後の勤務を確認しました${req.length ? `（必須スキル：${req.map((k) => (SKILLS as Record<string, { label: string }>)[k].label).join('・')}）` : ''}。${unfit.length ? `条件に合わない${unfit.length}人は自動の打診から外しました（理由は欠員の詳細で確認できます）` : '外した人はいません'}`, 'info');
-    t = logS(t, id, `優先順に最大${max}人へ1人ずつ打診します：${queue.map((q) => staffById(q).name).join(' → ') || '（候補なし）'}`, 'ok');
+    if (prob && Object.keys(prob).length) t = logS(t, id, `過去の打診の記録から学習したモデルで、応諾の見込みが高い順に並べ直しました${E.priority.availFirst ? '（「入れる日」に登録していた人を先にする設定は守っています）' : ''}`, 'info');
+    t = logS(t, id, `優先順に最大${max}人へ1人ずつ打診します：${queue.map((q) => `${staffById(q).name}${prob?.[q] !== undefined ? `（応諾の見込み ${Math.round(prob[q] * 100)}%）` : ''}`).join(' → ') || '（候補なし）'}`, 'ok');
     if (who) t = aiSayS(t, who, `リーダーの確認が済みました。代わりの方に順番に連絡しています。`);
     return stepS(t, id);
   });
@@ -380,9 +421,22 @@ export function skipCandidate(id: string) {
   set((s) => { const v = vac(s, id); if (!v?.auto) return {}; let t = patchV(s, id, (x) => ({ ...x, offers: x.offers.map((o) => (o.status === 'pending' ? { ...o, status: 'expired' } : o)) })); t = logS(t, id, 'リーダーが次の候補へ進めました', 'info'); return stepS(autoS(t, id, { mode: 'running', pendingStaff: undefined }), id); });
 }
 /** 通常の欠員（月次案の不足など）にも、リーダー操作で自動対応を開始できる */
-export function startAutopilot(id: string, o: { max?: number; waitMin?: number } = {}) {
+export function startAutopilot(id: string, o: { max?: number; waitMin?: number; ai?: AiRank } = {}) {
   set((s) => patchV(s, id, (x) => ({ ...x, auto: x.auto ?? { mode: 'ask', queue: [], idx: 0, max: effSettings(s, x).maxCandidates, log: [{ at: s.now, text: 'リーダーが自動対応を開始しました', kind: 'info' }] } })));
   approveAutopilot(id, o);
+}
+/**
+ * 「任せる」の入口。学習済みモデルの順番を API に1回だけ聞き（最大3秒）、使えればそれで、使えなければ従来の順番で進める。
+ * start=true は、まだ自動対応を始めていない欠員（startAutopilot）。同じ欠員の二重押しは無視する。
+ */
+const delegating = new Set<string>();
+export const isDelegating = (id: string) => delegating.has(id);
+export async function delegateAutopilot(id: string, o: { max?: number; waitMin?: number } = {}, start = false): Promise<void> {
+  if (delegating.has(id)) return;
+  delegating.add(id);
+  let ai: AiRank | null = null;
+  try { const v = vac(state, id); if (v) ai = await rankViaApi(state, v); } catch { ai = null; }
+  try { (start ? startAutopilot : approveAutopilot)(id, ai ? { ...o, ai } : o); } finally { delegating.delete(id); }
 }
 /** デモ用：時間を進める（返信待ち時間の経過・夜間送信待ちの解除） */
 export function advanceClock(min: number) {
@@ -417,9 +471,9 @@ export function assignStaff(vacancyId_: string, staffId: string, source: Assignm
 
 // 求人掲載（AIが作った求人文をリーダーが承認。モックのため実際の掲載・外部送信はしない）
 export function approveJobPost(id: string, text: string, reward: string) {
-  set((s) => { const v = vac(s, id); if (!v) return {}; let t = patchV(s, id, (x) => ({ ...x, state: 'posted', jobPost: { reward, text, status: 'posted', postedAt: s.now } })); t = autoS(t, id, { mode: 'posted' }); t = logS(t, id, 'リーダーが求人掲載を承認しました（モック：外部には送信していません）', 'ok'); return t; });
+  set((s) => { const v = vac(s, id); if (!v) return {}; let t = patchV(s, id, (x) => ({ ...x, state: 'posted', jobPost: { reward, text, status: 'posted', postedAt: s.now } })); t = autoS(t, id, { mode: 'posted' }); t = logS(t, id, 'リーダーが求人掲載を承認しました', 'ok'); return t; });
 }
-export function rejectJobPost(id: string) { set((s) => logS(autoS(patchV(s, id, (x) => ({ ...x, jobPost: undefined })), id, { mode: 'manual' }), id, 'リーダーが求人掲載を見送りました。手動で対応します', 'warn')); }
+export function rejectJobPost(id: string) { set((s) => logS(autoS(patchV(s, id, (x) => ({ ...x, jobPost: undefined, state: x.state === 'posted' ? 'open' : x.state })), id, { mode: 'manual' }), id, 'リーダーが求人掲載を見送りました。手動で対応します', 'warn')); }
 export function postJob(vacancyId_: string, reward: string) { patchVacancy(vacancyId_, (v) => ({ ...v, state: 'posted', jobPost: { reward, postedAt: nowStamp(), status: 'posted', text: v.jobPost?.text } })); }
 export function simulateApplication(vacancyId_: string) {
   set((s) => {
@@ -449,6 +503,17 @@ export function applyAdjustment(vacancyId_: string, planId: string) {
     return noticeS(t, { to: 'leader', kind: 'shift', title: `${vacancyId_}：調整案を反映しました`, body: plan.changes.map((c) => c.text).join('／'), link: 'vacancy' });
   });
 }
+/** 手動で延ばした時間を確定する（欠員を「時間の調整で対応」として閉じ、影響する職員に通知） */
+export function confirmManualAdjust(vacancyId_: string, changes: { assignmentId: string; staffId: string; text: string }[]) {
+  set((s) => {
+    const v = vac(s, vacancyId_); if (!v) return {};
+    let t: State = { ...s, assignments: s.assignments.map((a) => (a.id === v.fromAssignmentId ? { ...a, covered: true } : a)) };
+    t = patchV(t, vacancyId_, (x) => ({ ...x, resolution: { kind: 'adjust', at: s.now, title: '手動で時間を調整', changes }, state: 'filled', resolvedBy: 'adjust', auto: x.auto ? { ...x.auto, mode: 'done', waitUntil: undefined, pendingStaff: undefined } : x.auto }));
+    t = logS(t, vacancyId_, `リーダーが手動で時間を調整しました。${changes.map((c) => c.text).join('／')}`, 'ok');
+    for (const c of changes) t = noticeS(t, { to: c.staffId, kind: 'shift', title: `${fmtMD(v.date)}の勤務が調整されました`, body: `${c.text}。欠員への対応です。都合が悪い場合はリーダーに相談してください。`, link: 'shift' });
+    return noticeS(t, { to: 'leader', kind: 'shift', title: `${vacancyId_}：手動の調整を反映しました`, body: changes.map((c) => c.text).join('／'), link: 'vacancy' });
+  });
+}
 /** 「入れる日」の登録（希望提出時・シフト作成君から） */
 export function setAvailability(staffId: string, items: { date: string; shifts: ShiftCode[] }[]) { set((s) => ({ availability: { ...s.availability, [staffId]: items.sort((a, b) => a.date.localeCompare(b.date)) } })); }
 export function updateAutopilot(p: Partial<AutopilotSettings>) { set((s) => ({ autopilot: { ...s.autopilot, ...p } })); }
@@ -462,8 +527,53 @@ export function submitDayOff(staffId: string, dates: string[]) {
     notices: [notice({ to: 'leader', kind: 'info', title: `${staffById(staffId).name}さんが希望休を提出`, body: dates.length ? dates.map(fmtMD).join('、') : '希望なし', link: 'collection' }), ...s.notices],
   }));
 }
-export function remindUnsubmitted() {
-  set((s) => ({ notices: [...Object.entries(s.collection.submitted).filter(([, v]) => !v).map(([id]) => notice({ to: id, kind: 'info', title: `${s.collection.month.slice(5)}月分の希望休の提出をお願いします`, body: `締切：${fmtMD(s.collection.deadline)}。シフトタブの「希望休を出す」から提出できます。`, link: 'dayoff' })), ...s.notices] }));
+/** 未提出者に催促を送る。送った事実を残し、デモでは数名が数秒後に自動で提出する */
+export function remindUnsubmitted(): number {
+  const left = Object.entries(state.collection.submitted).filter(([, v]) => !v).map(([id]) => id);
+  if (!left.length) return 0;
+  set((s) => ({
+    collection: { ...s.collection, remindedAt: nowStamp(), remindedN: left.length },
+    notices: [...left.map((id) => notice({ to: id, kind: 'info', title: `${s.collection.month.slice(5)}月分の希望休の提出をお願いします`, body: `締切：${fmtMD(s.collection.deadline)}。シフトタブの「希望休を出す」から提出できます。`, link: 'dayoff' })), ...s.notices],
+    messages: [...s.messages, ...left.map((id) => ({ id: uid('M'), thread: `ai:${id}`, from: 'ai', text: `${s.collection.month.slice(5)}月分の希望休の提出をお願いします（締切 ${fmtMD(s.collection.deadline)}）。`, at: s.now }))],
+  }));
+  const month = state.collection.month;
+  // 全員が数秒以内にほぼ同時に提出（ほとんどは「希望休なし」、先頭の数名だけ希望休あり）
+  left.forEach((id, i) => setTimeout(() => {
+    if (state.collection.submitted[id]) return;
+    const d = (n: number) => `${month}-${String(n).padStart(2, '0')}`;
+    submitDayOff(id, i === 0 ? [d(12), d(13)] : i === 1 ? [d(20)] : []);
+  }, 1200 + (i % 6) * 150));
+  return left.length;
+}
+
+// ---- デモの自動進行（打診の返信・求人の応募） ----
+const demoDone = new Set<string>();
+/** デモの返信シナリオ：内部の候補が1人だけ→辞退（→求人へ）／複数→1人目は返信なし（期限切れで次へ）、2人目以降は承諾 */
+/** デモ用の返信の筋書き。候補の順番が学習した予測で変わっても、加藤さんが「入れる」と返信し、後藤さんは返信しない（動画の筋と同じ） */
+export function demoPlan(v: Vacancy, staffId?: string): 'silent' | 'decline' | 'accept' {
+  if ((v.auto?.queue.length ?? 0) <= 1) return 'decline';
+  const nm = staffId ? staffById(staffId)?.name ?? '' : '';
+  if (nm.startsWith('加藤')) return 'accept';
+  if (nm.startsWith('後藤')) return 'silent';
+  return v.offers.length <= 1 ? 'silent' : 'accept';
+}
+export function demoReply(vacancyId_: string, staffId: string) {
+  const v = state.vacancies.find((x) => x.id === vacancyId_); const o = v?.offers.find((x) => x.staffId === staffId && x.status === 'pending');
+  if (!v || !o) return; const plan = demoPlan(v, staffId); if (plan === 'silent') return;
+  const key = `${vacancyId_}:${staffId}:${o.at}`; if (demoDone.has(key)) return; demoDone.add(key);
+  const decline = plan === 'decline';
+  setTimeout(() => sendMessage(`ai:${staffId}`, staffId, decline ? '申し訳ありません、その日は予定があり入れません。' : 'はい、入れます。よろしくお願いします。'), 1800);
+  setTimeout(() => respondOffer(vacancyId_, staffId, !decline), 3200);
+}
+/** 求人の掲載から数秒後に、応募が自動で届く */
+export function demoApplication(vacancyId_: string) {
+  const v = state.vacancies.find((x) => x.id === vacancyId_); if (!v || v.state !== 'posted') return;
+  const key = `app:${vacancyId_}:${v.jobPost?.postedAt}`; if (demoDone.has(key)) return; demoDone.add(key);
+  setTimeout(() => { if (state.vacancies.find((x) => x.id === vacancyId_)?.state === 'posted') simulateApplication(vacancyId_); }, 3500);
+}
+/** 手動対応：割り当ての始業・終業を延ばす（延長のみ） */
+export function setAssignmentSpan(assignmentId: string, startAt?: number, endAt?: number) {
+  set((s) => ({ assignments: s.assignments.map((a) => (a.id === assignmentId ? { ...a, adjust: { ...(a.adjust ?? {}), ...(startAt ? { startAt } : {}), ...(endAt ? { endAt } : {}) } } : a)) }));
 }
 
 // ---- 来月の希望（希望休・入れる日・勤務帯）をまとめて提出・編集 ----
@@ -490,6 +600,39 @@ export function removeEvent(id: string) { set((s) => ({ events: s.events.filter(
 const dayOffMap = (s: State, month: string): Record<string, string[]> => (s.collection.month === month ? Object.fromEntries(Object.entries(s.collection.submitted).filter(([, v]) => v).map(([k, v]) => [k, v!.dates])) : {});
 export function createPlan(month: string, o: { nightMax?: number } = {}) {
   set((s) => ({ plan: planMonth(month, { assignments: s.assignments, dayOff: dayOffMap(s, month), avail: s.availability, events: s.events, nightMax: o.nightMax }), notices: [notice({ to: 'leader', kind: 'shift', title: `${+month.slice(5)}月のシフト案ができました`, body: '結果を確認し、必要なら編集してから公開してください。', link: 'plan' }), ...s.notices] }));
+  startSolver(month, o.nightMax);
+}
+
+// ---- 最適化ソルバー（Cloud Run の CP-SAT）で組み直す ----
+// 先に端末内の簡易計算の案を出しておき、ソルバーの結果が届いたら差し替える。届くまでに案が編集されていたら差し替えない。
+// 失敗（接続不可・25秒で打ち切り・混雑 429/503・解なし）したら簡易計算の案のまま（メモに1行だけ残す）。
+let solving: { month: string } | null = null;
+let solveCtl: AbortController | null = null;
+export const planSolving = () => solving;
+function startSolver(month: string, nightMax?: number) {
+  solveCtl?.abort();
+  const base = state.plan;
+  if (!base || base.month !== month || !solverEnabled()) { solving = null; solveCtl = null; return; }
+  const ctl = new AbortController(); solveCtl = ctl;
+  const timer = setTimeout(() => ctl.abort(), 25_000);
+  solving = { month }; subs.forEach((f) => f());
+  const ctx = { assignments: state.assignments, dayOff: dayOffMap(state, month), avail: state.availability, events: state.events, nightMax };
+  solveMonth(month, ctx, ctl.signal).then(({ draft, res }) => {
+    if (solveCtl !== ctl) return;
+    set((s) => {
+      if (s.plan !== base) return {};
+      const p = finalize(month, draft, ctx, 'draft', base.createdAt);
+      if (p.stats.vacantSlots > base.stats.vacantSlots) return { plan: { ...base, notes: [...base.notes, 'ソルバーの案は欠員枠が多かったため、簡易計算の案のままにしています'] } };
+      return { plan: { ...p, notes: [...solverNote(draft, res), ...p.notes] } };
+    });
+  }).catch((e) => {
+    if (solveCtl !== ctl) return;
+    console.info('[solver] 簡易計算の案を使います:', e);
+    set((s) => (s.plan === base ? { plan: { ...base, notes: [...base.notes, '最適化ソルバーに接続できなかったため、端末内の簡易計算で作成しました'] } } : {}));
+  }).finally(() => {
+    clearTimeout(timer);
+    if (solveCtl === ctl) { solving = null; solveCtl = null; subs.forEach((f) => f()); }
+  });
 }
 /** 作成中のシフトを手で直す：その日・勤務帯・ユニットの担当を入れ替える（staffId=null で空欄に） */
 export function planAssign(date: string, shift: ShiftCode, unitId: string, staffId: string | null) {
@@ -501,6 +644,61 @@ export function planAssign(date: string, shift: ShiftCode, unitId: string, staff
     return { plan: finalize(s.plan.month, draft, ctx, 'draft', s.plan.createdAt) };
   });
 }
+
+// ---- シフト作成：表（エクセル風）の一括編集・有休・依頼 ----
+export type PlanCode = ShiftCode | 'off' | 'paid';
+export interface PlanEdit { staffId: string; date: string; code: PlanCode; unitId?: string }
+export interface PlanSnap { draft: Assignment[]; paid: Record<string, string[]> }
+const ctxOf = (s: State) => ({ dayOff: dayOffMap(s, s.plan!.month), avail: s.availability, events: s.events, nightMax: s.plan!.stats.nightMax });
+/** 1つの勤務（担当）を差し替える。複数のマスをまとめて変えても、計算は1回 */
+export function planEdit(edits: PlanEdit[]) {
+  set((s) => {
+    if (!s.plan) return {};
+    let draft = s.plan.draft; const paid: Record<string, string[]> = { ...(s.paidLeave ?? {}) };
+    for (const e of edits) {
+      draft = draft.filter((a) => !(a.staffId === e.staffId && a.date === e.date && a.status !== 'absent'));
+      paid[e.staffId] = (paid[e.staffId] ?? []).filter((d) => d !== e.date);
+      if (e.code === 'paid') paid[e.staffId] = [...paid[e.staffId], e.date];
+      else if (e.code !== 'off') {
+        const unitId = e.unitId ?? staffById(e.staffId).homeUnit;
+        draft = draft.filter((a) => !(a.date === e.date && a.shift === e.code && a.unitId === unitId));
+        draft = [...draft, { id: uid('P'), date: e.date, staffId: e.staffId, shift: e.code, unitId, status: 'assigned', source: 'leader' }];
+      }
+    }
+    return { plan: finalize(s.plan.month, draft, ctxOf(s), 'draft', s.plan.createdAt), paidLeave: paid };
+  });
+}
+export function planRestore(snap: PlanSnap) {
+  set((s) => (s.plan ? { plan: finalize(s.plan.month, snap.draft, ctxOf(s), 'draft', s.plan.createdAt), paidLeave: snap.paid } : {}));
+}
+/** 職員への依頼（出勤・希望休の修正・有休の打診）。デモでは数秒後に返事が届く */
+export function sendPlanRequest(kind: PlanReqKind, staffId: string, date: string, o: { shift?: ShiftCode; unitId?: string } = {}): string {
+  const id = uid('RQ'); const st = staffById(staffId);
+  const what = kind === 'work' ? `${fmtMD(date)}の${o.shift ?? '勤務'}${o.unitId ? `（${unitName(o.unitId)}）` : ''}に入ってもらえませんか？` : kind === 'paid' ? `${fmtMD(date)}に有給休暇を取ってもらえませんか？（年5日の取得にあと少しです）` : `${fmtMD(date)}の希望休を見直してもらえませんか？その日は人手が足りません。`;
+  const title = kind === 'work' ? '出勤のお願い' : kind === 'paid' ? '有休取得のお願い' : '希望休の見直しのお願い';
+  set((s) => ({
+    planRequests: [{ id, kind, staffId, date, shift: o.shift, unitId: o.unitId, status: 'pending' as const, at: nowStamp() }, ...(s.planRequests ?? [])].slice(0, 30),
+    notices: [notice({ to: staffId, kind: 'info', title, body: what }), ...s.notices],
+    messages: [...s.messages, { id: uid('M'), thread: `ai:${staffId}`, from: 'ai', text: what, at: s.now }],
+  }));
+  const ok = hash31(staffId + date) % 5 !== 0;
+  setTimeout(() => {
+    set((s) => {
+      const reply = ok ? 'はい、大丈夫です。' : '申し訳ありません、その日は難しいです。';
+      let patch: Partial<State> = {};
+      if (ok && s.plan) {
+        if (kind === 'work' && o.shift) { const unitId = o.unitId ?? st.homeUnit; let draft = s.plan.draft.filter((a) => !(a.staffId === staffId && a.date === date && a.status !== 'absent') && !(a.date === date && a.shift === o.shift && a.unitId === unitId)); draft = [...draft, { id: uid('P'), date, staffId, shift: o.shift, unitId, status: 'assigned', source: 'leader' }]; patch = { plan: finalize(s.plan.month, draft, ctxOf(s), 'draft', s.plan.createdAt) }; }
+        if (kind === 'paid') { const draft = s.plan.draft.filter((a) => !(a.staffId === staffId && a.date === date && a.status !== 'absent')); patch = { plan: finalize(s.plan.month, draft, ctxOf(s), 'draft', s.plan.createdAt), paidLeave: { ...(s.paidLeave ?? {}), [staffId]: [...((s.paidLeave ?? {})[staffId] ?? []).filter((d) => d !== date), date] } }; }
+      }
+      if (ok && kind === 'dayoff' && s.collection.submitted[staffId]) patch = { ...patch, collection: { ...s.collection, submitted: { ...s.collection.submitted, [staffId]: { ...s.collection.submitted[staffId]!, dates: s.collection.submitted[staffId]!.dates.filter((d) => d !== date) } } } };
+      return { ...patch, planRequests: (s.planRequests ?? []).map((r) => (r.id === id ? { ...r, status: ok ? ('accepted' as const) : ('declined' as const) } : r)),
+        messages: [...s.messages, { id: uid('M'), thread: `ai:${staffId}`, from: staffId, text: reply, at: s.now }],
+        notices: [notice({ to: 'leader', kind: 'info', title: `${st.name}さんが${ok ? '依頼を承諾' : '依頼を辞退'}`, body: `${title}（${fmtMD(date)}）`, link: 'plan' }), ...s.notices] };
+    });
+  }, 2200 + (hash31(staffId) % 5) * 300);
+  return id;
+}
+const hash31 = (s: string) => { let h = 7; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
 export function publishPlan() {
   set((s) => {
     if (!s.plan || s.plan.status !== 'draft') return {};
@@ -515,18 +713,27 @@ export function publishPlan() {
 // ---- リーダーとシフト作成君のチャット ----
 export function askLeaderAI(text: string) {
   if (!text.trim()) return;
+  const first = interpretLeader(text, state); const aid = uid('M');
   set((s) => {
-    const r = interpretLeader(text, s);
+    const r = first.unknown ? { ...first, text: '内容を確認しています…', links: undefined, action: undefined } : first;
     const u: ChatMessage = { id: uid('M'), thread: 'ai:leader', from: 'leader', text: text.trim(), at: s.now };
-    const a: ChatMessage = { id: uid('M'), thread: 'ai:leader', from: 'ai', text: r.text, at: s.now, links: r.links, action: r.action ? { ...r.action, state: 'proposed' } : undefined };
+    const a: ChatMessage = { id: aid, thread: 'ai:leader', from: 'ai', text: r.text, at: s.now, links: r.links, action: r.action ? { ...r.action, state: 'proposed' } : undefined };
     return { messages: [...s.messages, u, a] };
   });
+  if (!first.unknown) return;
+  // ルールで読めない言葉は Gemini に分類してもらい、定型の文に直して同じ提案の流れに乗せる
+  const patch = (fn: (m: ChatMessage) => ChatMessage) => set((s) => ({ messages: s.messages.map((m) => (m.id === aid ? fn(m) : m)) }));
+  askLeader(text.trim(), state.today).then((i) => {
+    const c = leaderSentence(i); const r = c ? interpretLeader(c, state) : null;
+    if (r && !r.unknown) patch((m) => ({ ...m, text: r.text, links: r.links, action: r.action ? { ...r.action, state: 'proposed' as const } : undefined }));
+    else patch((m) => ({ ...m, text: i.reply || first.text }));
+  }).catch((e: Error) => patch((m) => ({ ...m, text: `${e.message}\n\n${first.text}` })));
 }
 export function cancelLeaderAction(msgId: string) { set((s) => ({ messages: s.messages.map((m) => (m.id === msgId && m.action ? { ...m, action: { ...m.action, state: 'cancelled' as const } } : m)) })); }
 export function runLeaderAction(msgId: string) {
   const m = state.messages.find((x) => x.id === msgId); const a = m?.action; if (!a || a.state !== 'proposed') return;
   let result = '実行しました。';
-  if (a.kind === 'delegate') { for (const id of a.args.ids as string[]) { const v = state.vacancies.find((x) => x.id === id); if (!v) continue; if (v.auto && v.auto.mode !== 'manual') approveAutopilot(id); else startAutopilot(id); } result = '任せました。進み具合は各欠員の画面で確認できます。時間調整の承認や求人の承認が必要になったら、お知らせします。'; }
+  if (a.kind === 'delegate') { for (const id of a.args.ids as string[]) { const v = state.vacancies.find((x) => x.id === id); if (!v) continue; void delegateAutopilot(id, {}, !(v.auto && v.auto.mode !== 'manual')); } result = '任せました。進み具合は各欠員の画面で確認できます。時間調整の承認や求人の承認が必要になったら、お知らせします。'; }
   else if (a.kind === 'remind') { remindUnsubmitted(); result = '未提出の人に催促を送りました。'; }
   else if (a.kind === 'approveRequests') { for (const id of a.args.ids as string[]) decideRequest(id, true, true); result = '承認しました。欠員が出たものは、シフト作成君に任せています。'; }
   else if (a.kind === 'createPlan') { createPlan(a.args.month as string, { nightMax: a.args.nightMax as number | undefined }); result = 'シフト案を作成しました。「シフト」の「シフト作成」で確認・編集できます。'; }

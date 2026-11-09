@@ -4,17 +4,19 @@
 
 | 動画の場面 | この API の役割 |
 |---|---|
+| 月次のシフトを、シフト作成君に任せる | リーダー画面の「シフト作成君に作ってもらう」が、画面の職員・希望休・行事をそのまま送って CP-SAT で解く（`POST /api/v1/solve-inline`、`care/inline_solve.py`）。保存しない |
 | 条件を満たすシフトを、自動で | 法令（仮値）・スキル・希望・公平性の必須ルールを守る月次＋日次の案を求解する（`care/solver/`、`care/dsl.py`） |
 | 足りない時間が見える／埋める | 時間ごとの必要人数と配置人数を比べ、不足を特定し、変更が最小になる組み直し案を出す（`care/coverage_view.py`、`care/service.py`） |
-| 代わりになれる人を探して打診する | ルールを破らない候補を、施設ごとに学習した応諾の見込み（%）と理由つきで並べる（`care/learn/`） |
+| 代わりになれる人を探して打診する | 打診の候補を、学習した応諾の見込み（%）で並べ替える（`POST /api/v1/rank-candidates`、`care/inline_rank.py`、`care/learn/`） |
+| 文章はAIが整える | 休み連絡の選択（種類・日付・勤務・理由）から、Gemini が依頼文を作る（`POST /api/v1/employee-compose`、`care/ai/compose.py`）。検証に落ちれば定型文 |
 | Gemini が言葉をルールに翻訳し、理由を説明 | ルール翻訳・説明の言い換え・チャット（`care/ai/`）。渡す前に Sensitive Data Protection で伏せ字にする |
-| 毎週、記録を学習する | Vertex AI Pipelines で応諾予測を学習し、基準に勝ったモデルだけを昇格する（`pipelines/`） |
+| 毎週、記録を学習する | Vertex AI Pipelines（毎週月曜 03:00 JST）で応諾予測を学習し、基準に勝ったモデルだけを昇格する（`pipelines/`） |
 
 設計は `docs/ARCHITECTURE_v0.3_cpsat.md`。
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python -m pytest -q tests                                  # 70件（Firestore 不要）
+.venv/bin/python -m pytest -q tests                                  # 109件（Firestore 不要）
 STORE=memory SYNTH_DIR=../scripts/synth/out .venv/bin/uvicorn care.server:app --port 8080   # ローカル（メモリ）
 .venv/bin/python -m care.cli --facility fac-sakura --day 12          # 月次＋日次を解いて要約
 python scripts/smoke.py https://care-solver-api-h5p5nqo3qa-an.a.run.app fac-hidamari    # 通し確認（Firestore に追記される）

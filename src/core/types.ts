@@ -76,7 +76,7 @@ export interface Vacancy {
 
 export interface AutopilotSettings {
   enabled: boolean; maxCandidates: number; waitSameDay: number; waitOther: number; quietStart: string; quietEnd: string; defaultReward: string;
-  useAdjust: boolean; adjustKinds: { break: boolean; support: boolean; extend: boolean };
+  useAdjust: boolean; autoPost?: boolean; adjustKinds: { break: boolean; support: boolean; extend: boolean };
   priority: { availFirst: boolean; skill: 'low' | 'normal' | 'high'; days: 'low' | 'normal' | 'high' };
   jobNote: string;
 }
@@ -85,6 +85,7 @@ export interface AutoState {
   queue: string[]; idx: number; max: number; waitMin?: number;
   waitUntil?: string; pendingStaff?: string; // 夜間のため送信待ちの職員
   log: { at: string; text: string; kind: 'info' | 'offer' | 'ok' | 'warn' }[];
+  prob?: Record<string, number>; // 学習済みモデルによる応諾の見込み（0〜1）。API が使えたときだけ入る
 }
 export type RequestKind = '休み' | '遅刻' | '早退' | 'シフト変更' | '希望休';
 export interface ShiftRequest {

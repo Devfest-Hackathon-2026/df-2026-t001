@@ -27,6 +27,8 @@ export function SettingsForm({ val, onChange }: { val: AutopilotSettings; onChan
         <div class="field"><label>連絡しない時間（終了）</label><input class="input" type="time" value={val.quietEnd} onInput={(e) => onChange({ quietEnd: (e.target as HTMLInputElement).value })} /></div>
       </div>
 
+      <h4 class="sec-title">求人</h4>
+      <Toggle label="打診で埋まらなければ、求人を自動で掲載する" sub="オフにすると、求人の掲載はあなたの承認後に行います。" on={val.autoPost !== false} onChange={(b) => onChange({ autoPost: b })} />
       <h4 class="sec-title">時間をずらす調整</h4>
       <Toggle label="時間調整を先に確認する" sub="単独で足りなければ、方法を組み合わせて確認します。反映前に必ずあなたの承認を求めます。" on={val.useAdjust} onChange={(b) => onChange({ useAdjust: b })} />
       <div style="padding-left:12px;border-left:2px solid var(--line2)">

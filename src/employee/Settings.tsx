@@ -36,7 +36,6 @@ export function Settings({ s, c }: { s: State; c: Ctx }) {
         <Sw label="アプリへの通知" help="シフトの変更や打診が届きます" on={st.push} onChange={(v) => saveSettings(MY_ID, { push: v })} />
         <Sw label="メールでも受け取る" help="登録のメールアドレスにも送ります" on={st.mail} onChange={(v) => saveSettings(MY_ID, { mail: v })} />
         <Sw label="夜間は通知を抑える" help="22:00〜7:00。この時間は代わりの出勤の打診も届きません" on={st.quietNight} onChange={(v) => saveSettings(MY_ID, { quietNight: v })} />
-        <p class="small" style="padding:4px 0 12px">通知はモックです（実際の送信はしません）。</p>
       </section>
       <section class="card"><h2 class="h2">表示</h2><p class="small">見やすい大きさを選べます。</p><div class="field" style="margin-top:8px"><label>文字サイズ</label><div class="seg"><button aria-pressed={st.textSize === 'standard'} onClick={() => saveSettings(MY_ID, { textSize: 'standard' })}>標準</button><button aria-pressed={st.textSize === 'large'} onClick={() => saveSettings(MY_ID, { textSize: 'large' })}>大きい</button></div></div></section>
       <section class="card stack"><div><h2 class="h2">勤務条件・希望</h2>

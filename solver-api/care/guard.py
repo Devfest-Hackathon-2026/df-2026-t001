@@ -33,12 +33,12 @@ def client_ip(headers, peer: str | None) -> str:
 def is_heavy(method: str, path: str) -> bool:
     """CPU を使う呼び出し（求解・組み直し・欠員登録・日次・候補の順位付け）。"""
     if method == "POST":
-        return path.endswith(("/solve", "/replan", "/vacancies"))
+        return path.endswith(("/solve", "/solve-inline", "/replan", "/vacancies"))
     return "/daily/" in path or path.endswith("/candidates")
 
 
 def is_ai(method: str, path: str) -> bool:
-    return method == "POST" and path.endswith(("/translate", "/explain", "/chat"))
+    return method == "POST" and path.endswith(("/translate", "/explain", "/chat", "/plan-intent", "/leader-intent", "/employee-intent"))
 
 
 def allow(ip: str, heavy: bool | str, now: float | None = None) -> tuple[bool, int]:

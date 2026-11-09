@@ -44,7 +44,7 @@ class LLM(Protocol):
     def structured(self, *, model: str, system: str, prompt: str, schema: type[BaseModel], max_tokens: int = 2048,
                    thinking: str | None = "low") -> tuple[BaseModel, Usage]: ...
 
-    def text(self, *, model: str, system: str, prompt: str, max_tokens: int = 1536) -> tuple[str, Usage]: ...
+    def text(self, *, model: str, system: str, prompt: str, max_tokens: int = 1536, thinking: str | None = None) -> tuple[str, Usage]: ...
 
     def chat(self, *, model: str, system: str, history: list[dict], user_text: str, tools: dict[str, Callable[..., Any]],
              decls: list[dict], max_steps: int = 4, max_tokens: int = 2048) -> ChatResult: ...
@@ -98,11 +98,11 @@ class GeminiLLM:
         except Exception as e:  # noqa: BLE001
             raise AIError(f"{model}: {str(e)[:200]}") from e
 
-    def text(self, *, model, system, prompt, max_tokens=1536):
+    def text(self, *, model, system, prompt, max_tokens=1536, thinking=None):
         t0 = time.time()
         try:
             r = self._call(model=model, contents=prompt, config=self._cfg(
-                system_instruction=system, temperature=0.2, max_output_tokens=max_tokens))
+                system_instruction=system, temperature=0.2, max_output_tokens=max_tokens, thinking=thinking))
             if not r.text:
                 raise AIError("空の応答")
             return r.text.strip(), self._usage(model, r, t0)
@@ -190,7 +190,7 @@ class FakeLLM:
             raise x
         return (x if isinstance(x, schema) else schema.model_validate(x)), Usage(model, 10, 5)
 
-    def text(self, *, model, system, prompt, max_tokens=1536):
+    def text(self, *, model, system, prompt, max_tokens=1536, thinking=None):
         self.calls.append({"kind": "text", "model": model, "prompt": prompt})
         if not self.text_q:
             raise AIError("fake: 応答なし")

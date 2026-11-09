@@ -18,7 +18,7 @@ export function PrintRoster({ s, ym: ym0, onClose }: { s: State; ym: string; onC
       </div>
       <div class="print-sheet">
         <h2 style="font-size:16px;font-weight:500;margin-bottom:4px">{yy}年{mm}月 勤務表（さくら苑・架空データ）</h2>
-        <p class="small" style="margin-bottom:6px">早=早番 日=日勤 遅=遅番 夜=夜勤　数字=ユニット（{UNITS.map((u) => `${u.id.slice(1)}:${u.name}`).join(' ')}）　×=欠勤　作成：モック</p>
+        <p class="small" style="margin-bottom:6px">早=早番 日=日勤 遅=遅番 夜=夜勤　数字=ユニット（{UNITS.map((u) => `${u.id.slice(1)}:${u.name}`).join(' ')}）　×=欠勤</p>
         <table class="ptbl"><thead><tr><th class="pn">職員</th>{days.map((d) => <th key={d} class={dow(d) === 0 ? 'su' : dow(d) === 6 ? 'sa' : ''}>{parseYmd(d).getDate()}<br />{DOW_JA[dow(d)]}</th>)}</tr></thead>
           <tbody>{staff.map((x) => <tr key={x.id}><th class="pn">{x.name}</th>{days.map((d) => { const a = s.assignments.find((y) => y.staffId === x.id && y.date === d); return <td key={d} class={a?.status === 'absent' ? 'ab' : ''}>{a ? (a.status === 'absent' ? '×' : `${SHIFTS[a.shift].short}${a.unitId.slice(1)}`) : ''}</td>; })}</tr>)}</tbody></table>
       </div>

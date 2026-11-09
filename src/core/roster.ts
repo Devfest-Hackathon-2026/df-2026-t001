@@ -29,6 +29,38 @@ export interface GenOpts {
   dayOff?: Record<string, string[]>; avail?: Record<string, { date: string; shifts: ShiftCode[] }[]>;
   extra?: (date: string, shift: ShiftCode) => number; nightMax?: number; idPrefix?: string;
 }
+/** ユニットへの割り当てやすさ（小さいほど良い）。所属ユニットなら 0 */
+export const unitFit = (s: Staff, unitId: string) => (s.homeUnit === unitId ? 0 : 4);
+
+/**
+ * その日・その勤務帯に入る人（施設全体で決まったもの）を、ユニットに割り当てる。
+ * 各ユニット1人を基本に、所属ユニットを優先。夜勤は各フロアに医療的ケアの人を1人以上置く（generateRoster と同じ方針）。
+ * ユニット数より多い人は「追加配置」（extra）として所属ユニットに置く。少ないときは、空いたユニットが欠員になる。
+ */
+export function assignUnits(staffIds: string[], shift: ShiftCode): { staffId: string; unitId: string; extra: boolean }[] {
+  const people = staffIds.map(staffById);
+  const units = UNITS.map((u) => u.id);
+  const pick: (number | null)[] = []; const used = new Set<number>();
+  let best: (number | null)[] = []; let bestScore = Infinity;
+  const evalPick = () => {
+    let sc = 0;
+    pick.forEach((i, k) => { sc += i === null ? 1000 : unitFit(people[i], units[k]); });
+    if (shift === '夜勤') for (const fl of [1, 2]) if (!pick.some((i, k) => i !== null && floorOf(units[k]) === fl && people[i].skills.includes('medical'))) sc += 100;
+    if (sc < bestScore) { bestScore = sc; best = pick.slice(); }
+  };
+  const rec = (k: number) => {
+    if (k === units.length) { evalPick(); return; }
+    let any = false;
+    for (let i = 0; i < people.length; i++) { if (used.has(i)) continue; any = true; used.add(i); pick.push(i); rec(k + 1); pick.pop(); used.delete(i); }
+    if (!any || people.length - used.size < units.length - k) { pick.push(null); rec(k + 1); pick.pop(); }
+  };
+  rec(0);
+  const out: { staffId: string; unitId: string; extra: boolean }[] = [];
+  best.forEach((i, k) => { if (i !== null) out.push({ staffId: people[i].id, unitId: units[k], extra: false }); });
+  people.forEach((p, i) => { if (!best.includes(i)) out.push({ staffId: p.id, unitId: p.homeUnit, extra: true }); });
+  return out;
+}
+
 export const generateBaseRoster = () => generateRoster({ start: RANGE_START, end: RANGE_END, forced: FORCED.filter((f) => f.id !== 'A-F3'), forcedVacant: FORCED_VACANT });
 export function generateRoster(o: GenOpts): Assignment[] {
   const out: Assignment[] = [];
@@ -61,7 +93,7 @@ export function generateRoster(o: GenOpts): Assignment[] {
     return true;
   };
   const score = (s: Staff, d: string, shift: ShiftCode, unitId: string, wantMedical = false) =>
-    recent(s.id, d, 7) * 10 + (s.homeUnit === unitId ? 0 : 4) + (hash(s.id + d + shift) % 5) - (wantMedical && s.skills.includes('medical') ? 8 : 0) + (s.isLeader ? 6 : 0) + (hasAvail(s.id, d) ? 12 : 0);
+    recent(s.id, d, 7) * 10 + unitFit(s, unitId) + (hash(s.id + d + shift) % 5) - (wantMedical && s.skills.includes('medical') ? 8 : 0) + (s.isLeader ? 6 : 0) + (hasAvail(s.id, d) ? 12 : 0);
 
   for (const d of dates) {
     for (const f of forced.filter((x) => x.date === d)) put({ ...f } as Omit<Assignment, 'id'>);

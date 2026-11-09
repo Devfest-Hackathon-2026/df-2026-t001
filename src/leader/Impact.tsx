@@ -10,7 +10,7 @@ import './vacancy.css';
 
 type Rows = { rows: DayRow[]; ghost?: DayRow };
 const night = (v: Vacancy) => v.shift === '夜勤';
-const inScope = (v: Vacancy) => (r: DayRow) => (night(v) ? (r.assignment.shift === '夜勤' || r.tail === true) && floorOf(r.assignment.unitId) === floorOf(v.unitId) : (r.assignment.unitId === v.unitId || r.blocks.some((b) => b.unitId === v.unitId)) && !r.tail);
+export const inScope = (v: Vacancy) => (r: DayRow) => (night(v) ? (r.assignment.shift === '夜勤' || r.tail === true) && floorOf(r.assignment.unitId) === floorOf(v.unitId) : (r.assignment.unitId === v.unitId || r.blocks.some((b) => b.unitId === v.unitId)) && !r.tail);
 const scopeIssue = (v: Vacancy) => (i: CoverageIssue) => i.scope === unitName(v.unitId) || (night(v) && i.scope === `${floorOf(v.unitId)}階`);
 
 function build(all: Assignment[], v: Vacancy): Rows {
@@ -31,7 +31,7 @@ function Track({ blocks, t0, t1, ghost, cls }: { blocks: TaskBlock[]; t0: number
     </div>
   );
 }
-function Gaps({ issues, t0, t1 }: { issues: CoverageIssue[]; t0: number; t1: number }) {
+export function Gaps({ issues, t0, t1 }: { issues: CoverageIssue[]; t0: number; t1: number }) {
   return <div class="mtrack gaps">{issues.filter((i) => i.t1 > t0 && i.t0 < t1).map((i, k) => <span key={k} class="mb gap" style={`left:${(Math.max(i.t0, t0) - t0) / (t1 - t0) * 100}%;width:${(Math.min(i.t1, t1) - Math.max(i.t0, t0)) / (t1 - t0) * 100}%`} title={`${issueTime(i)} ${i.text}`} />)}</div>;
 }
 
@@ -54,13 +54,13 @@ function Board({ title, data, issues, t0, t1, extra }: { title: string; data: Ro
 
 
 // ================= 該当の行だけを見せる「フォーカス表示」 =================
-const issuesFor = (v: Vacancy, list: Assignment[]): CoverageIssue[] => [0, ...(night(v) ? [1] : [])].flatMap((k) => coverage(buildDay(list, addDays(v.date, k))).map((i) => ({ ...i, t0: i.t0 + k * 1440, t1: i.t1 + k * 1440 }))).filter(scopeIssue(v));
-const gapText = (i: CoverageIssue) => (i.kind === 'headcount' ? `${issueTime(i)} ${i.scope}の対応人数が不足（必要${i.need}名・現在${i.have}名）` : `${issueTime(i)} ${i.text}`);
+export const issuesFor = (v: Vacancy, list: Assignment[]): CoverageIssue[] => [0, ...(night(v) ? [1] : [])].flatMap((k) => coverage(buildDay(list, addDays(v.date, k))).map((i) => ({ ...i, t0: i.t0 + k * 1440, t1: i.t1 + k * 1440 }))).filter(scopeIssue(v));
+export const gapText = (i: CoverageIssue) => (i.kind === 'headcount' ? `${issueTime(i)} ${i.scope}の対応人数が不足（必要${i.need}名・現在${i.have}名）` : `${issueTime(i)} ${i.text}`);
 const gapLine = (list: CoverageIssue[]) => (list.length ? list.slice(0, 2).map((i) => `${issueTime(i)} ${i.scope}が${Math.max(1, i.need - i.have)}名不足`).join('、') + (list.length > 2 ? ` ほか${list.length - 2}か所` : '') : '不足する時間はありません');
 const tagFromAdjust = (a?: Assignment): string | undefined => { const j = a?.adjust; if (!j) return undefined; if (j.breakAt != null) return '休憩を移動'; if (j.support) return '応援に入る'; if (j.startAt != null) return '出勤を前倒し'; if (j.endAt != null) return '退勤を延長'; if (j.swaps?.length) return '業務を入れ替え'; return '変更'; };
 const blockKey = (b: TaskBlock) => `${b.start}|${b.end}|${b.kind}|${b.unitId}|${b.label}`;
 
-function windowFor(v: Vacancy, lists: CoverageIssue[][], span?: [number, number]): [number, number] {
+export function windowFor(v: Vacancy, lists: CoverageIssue[][], span?: [number, number]): [number, number] {
   const def = SHIFTS[v.shift]; const lo = def.start - 60; const hi = def.end + 60;
   let a = Infinity; let b = -Infinity;
   for (const i of lists.flat()) { a = Math.min(a, i.t0); b = Math.max(b, i.t1); }

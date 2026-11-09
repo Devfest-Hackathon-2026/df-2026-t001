@@ -135,7 +135,7 @@ export function Chat({ s, c }: { s: State; c: Ctx }) {
           <div class="card" style="padding:12px">
             <div class="row spread" style="margin-bottom:8px"><b>何を伝えますか？</b><span class="small">タップして選ぶだけ</span></div>
             <ActionGrid onPick={(k) => setSheet(k)} />
-            <p class="small" style="margin-top:8px">下の入力欄から文章でも送れます。Gemini 連携は未接続（モック・ルールベースで解釈）です。</p>
+            <p class="small" style="margin-top:8px">下の入力欄から文章でも送れます。</p>
             <details class="how"><summary>しくみ</summary>
               <p>欠員が出たらシフト作成君が代わりの方に順番に連絡します。リーダーの確認があり、求人の掲載は必ずリーダーが承認します。</p>
               <p>連絡が来ても、断って大丈夫です。評価には影響しません。</p>
