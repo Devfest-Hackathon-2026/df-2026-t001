@@ -79,7 +79,7 @@ npm install && npm run dev        # http://localhost:5173 → 左のナビ「学
 ## 注意・出典
 
 - **Firebase の Web API キー**（`public/sync.js`）は、クライアントに置く前提の公開キーです。公開サイトの 3 つのリファラーと、認証用の 2 つの API だけに制限しています（秘密情報ではありません）。
-- ルールの考え方（強度の 3 段階、二度解きによる不充足の説明、手修正のくり返しの検出）は、[ben1san/df-hack26](https://github.com/ben1san/df-hack26) の設計から着想を得ました。LICENSE が無いため **コードは複製せず**、介護施設向けに独自に実装しています。
+- ルールの考え方（強度の 3 段階、二度解きによる不充足の説明、手修正のくり返しの検出）は、チームメンバー（久保 公行）が作成した [ben1san/df-hack26](https://github.com/ben1san/df-hack26) の設計の考え方を参考にしています。コードは複製せず、介護施設向けに独自に実装しています。
 - 構成図のアイコンは Google Cloud 公式（[cloud.google.com/icons](https://cloud.google.com/icons)、Cloud Run・BigQuery・Cloud Storage・Vertex AI を無加工で使用）。そのほかのサービスは文字のみ。
 - 実在の人物・施設・個人情報は含みません。
 
