@@ -1,0 +1,35 @@
+/* 学習AI（care-solver-api）の画面。既存の変数・共通クラス（card / chip / btn / seg / row / stack）を使う */
+.sv-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.sv-note { font-size: 12px; color: var(--tx2); }
+.sv-banner { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 8px 12px; font-size: 12px; margin-bottom: 12px; }
+.sv-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin: 12px 0; }
+.sv-kpi { background: var(--bg2); border-radius: 10px; padding: 10px 12px; } .sv-kpi b { display: block; font-size: 20px; font-weight: 500; } .sv-kpi span { font-size: 12px; color: var(--tx2); }
+.sv-grid-wrap { overflow: auto; max-height: 62vh; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+.sv-grid { border-collapse: separate; border-spacing: 0; font-size: 12px; }
+.sv-grid th, .sv-grid td { padding: 0; height: 26px; min-width: 26px; text-align: center; border-bottom: 1px solid var(--line2); border-right: 1px solid var(--line2); }
+.sv-grid thead th { position: sticky; top: 0; background: var(--bg3); z-index: 2; font-weight: 500; color: var(--tx2); cursor: pointer; }
+.sv-grid thead th.sel { background: var(--pri-bg); color: var(--pri-tx); } .sv-grid thead th.we { color: var(--bad); }
+.sv-grid .who { position: sticky; left: 0; background: var(--bg); z-index: 1; text-align: left; padding: 0 8px; min-width: 150px; max-width: 170px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sv-grid thead .who { z-index: 3; background: var(--bg3); cursor: default; }
+.c-早 { background: #fff4d6; color: #7a5500; } .c-日 { background: #e3f1ff; color: #174ea6; } .c-遅 { background: #f1e6ff; color: #5b2d91; } .c-夜 { background: #2f3b6b; color: #fff; } .c-休 { color: var(--tx3); }
+.sv-legend { display: flex; gap: 8px; flex-wrap: wrap; font-size: 12px; margin: 8px 0; } .sv-legend span { padding: 2px 8px; border-radius: 6px; }
+.sv-tl { margin-top: 8px; } .sv-tl-axis, .sv-tl-row { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 8px; }
+.sv-tl-axis { font-size: 11px; color: var(--tx3); } .sv-tl-axis .ticks { position: relative; height: 16px; } .sv-tl-axis .ticks i { position: absolute; transform: translateX(-50%); font-style: normal; }
+.sv-tl-row { margin-top: 6px; font-size: 12px; } .sv-tl-row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sv-tl-track { position: relative; height: 22px; background: var(--bg3); border-radius: 6px; overflow: hidden; }
+.sv-tl-bar { position: absolute; top: 2px; bottom: 2px; border-radius: 4px; font-size: 10px; line-height: 18px; padding: 0 3px; overflow: hidden; white-space: nowrap; }
+.sv-tl-shift { position: absolute; top: 0; bottom: 0; background: rgba(26,115,232,.08); }
+.sv-prob { height: 8px; background: var(--bg3); border-radius: 6px; overflow: hidden; margin: 4px 0; } .sv-prob i { display: block; height: 100%; background: var(--pri); border-radius: 6px; }
+.sv-cand { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; align-items: start; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+.sv-cand ul { margin: 4px 0 0 16px; font-size: 12px; color: var(--tx2); }
+.sv-chat { display: flex; flex-direction: column; gap: 8px; max-height: 46vh; overflow: auto; padding: 4px; }
+.sv-msg { max-width: 92%; padding: 8px 12px; border-radius: 12px; font-size: 14px; white-space: pre-wrap; } .sv-msg.me { align-self: flex-end; background: var(--pri-bg); color: var(--pri-tx); } .sv-msg.ai { align-self: flex-start; background: var(--bg3); }
+.sv-prop { border: 1px solid var(--pri); border-radius: 10px; padding: 10px; background: var(--bg); margin-top: 6px; font-size: 13px; }
+.sv-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 12px; align-items: start; }
+.sv-sugg { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.sv-table { width: 100%; border-collapse: collapse; font-size: 13px; } .sv-table th, .sv-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line2); } .sv-table th { font-size: 12px; color: var(--tx2); font-weight: 500; }
+.sv-spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--pri); border-radius: 50%; animation: sv-rot .8s linear infinite; vertical-align: -2px; } @keyframes sv-rot { to { transform: rotate(360deg); } }
+.sv-err { background: var(--bad-bg); color: var(--bad); border-radius: 8px; padding: 8px 12px; font-size: 13px; margin: 8px 0; }
+.sv-ok { background: var(--ok-bg); color: var(--ok); border-radius: 8px; padding: 8px 12px; font-size: 13px; margin: 8px 0; }
+
+.sv-two .seg { flex-wrap: wrap; } .sv-two .seg button { white-space: nowrap; }

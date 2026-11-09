@@ -1,0 +1,8 @@
+.venv
+tests
+scripts
+__pycache__
+.pytest_cache
+*.pyc
+requirements-dev.txt
+.gcloudignore

@@ -1,0 +1,12 @@
+{
+  "day": {
+    "total": 20,
+    "needsMedicalCare": 12,
+    "needsAttention": 8
+  },
+  "night": {
+    "total": 20,
+    "needsNightCheck": 10,
+    "needsMedicalCare": 12
+  }
+}

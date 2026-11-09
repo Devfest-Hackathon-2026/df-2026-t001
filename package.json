@@ -1,0 +1,20 @@
+{
+  "name": "gdgoc-care-connect",
+  "private": true,
+  "type": "module",
+  "description": "仮名 — 介護施設のシフト・欠員対応（Vite + Preact + TypeScript、Firebase Hosting + Cloud Run）",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "deploy": "npm run build && npx --yes firebase-tools@14 deploy --only hosting --project gdgoc-514203"
+  },
+  "dependencies": {
+    "preact": "^10.26.0"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0"
+  }
+}

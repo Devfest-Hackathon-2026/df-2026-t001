@@ -1,34 +1,44 @@
-# 秘密情報（コミットしない）
-.env
-.env.*
-!.env.example
-.dev.vars
-.dev.vars.*
-!.dev.vars.example
-*.pem
-*.key
-*.p12
-service-account*.json
-credentials*.json
-google-services.json
-GoogleService-Info.plist
-
-# 依存関係とビルドの成果物
 node_modules/
-dist/
-build/
-out/
 .next/
-.wrangler/
-__pycache__/
-*.pyc
-.venv/
-venv/
-
-# OS とエディタ
+.env*
 .DS_Store
-Thumbs.db
-.idea/
-.vscode/*
-!.vscode/extensions.json
+.vercel/
+dist/
+coverage/
+.wrangler/
+.dev.vars
+package-lock.json
+
+test-*.js
+manual-*.js
+*.png
+screenshots/
+artifacts/
+node_modules/
+package-lock.json
 *.log
+*.txt
+
+# Pitch / hackathon media & project docs (override *.png / *.txt / artifacts)
+!media/
+!media/**
+!docs/
+!docs/**
+
+__pycache__/
+.pytest_cache/
+.venv/
+*.tfstate*
+.terraform/
+infra/tfplan*
+.firebase/
+
+# Python 依存定義は追跡する（上の *.txt 除外の例外）
+!api/requirements*.txt
+!solver-api/requirements*.txt
+
+# 合成データの生成物（再生成できる。truth.jsonは検証用の真値なので公開しない）
+scripts/synth/out/
+
+# solver-api
+solver-api/.venv/

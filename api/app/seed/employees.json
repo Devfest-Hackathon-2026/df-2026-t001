@@ -1,0 +1,389 @@
+[
+  {
+    "id": "EMP-001",
+    "name": "佐藤 健",
+    "role": "介護職",
+    "skills": [
+      "基本介護",
+      "医療的ケア"
+    ],
+    "canNightShift": true,
+    "canMentor": true
+  },
+  {
+    "id": "EMP-002",
+    "name": "鈴木 花子",
+    "role": "介護職",
+    "skills": [
+      "基本介護"
+    ],
+    "canNightShift": true,
+    "canMentor": false
+  },
+  {
+    "id": "EMP-003",
+    "name": "高橋 誠",
+    "role": "介護職",
+    "skills": [
+      "基本介護",
+      "医療的ケア"
+    ],
+    "canNightShift": true,
+    "canMentor": true
+  },
+  {
+    "id": "EMP-004",
+    "name": "田中 愛",
+    "role": "介護職",
+    "skills": [
+      "基本介護"
+    ],
+    "canNightShift": true,
+    "canMentor": false
+  },
+  {
+    "id": "EMP-005",
+    "name": "渡辺 真",
+    "role": "介護職",
+    "skills": [
+      "基本介護"
+    ],
+    "canNightShift": false,
+    "canMentor": true
+  },
+  {
+    "id": "EMP-006",
+    "name": "山田 拓也",
+    "role": "介護職",
+    "skills": [
+      "基本介護",
+      "医療的ケア"
+    ],
+    "canNightShift": true,
+    "canMentor": true
+  },
+  {
+    "id": "EMP-007",
+    "name": "吉田 麻美",
+    "role": "介護職",
+    "skills": [
+      "基本介護"
+    ],
+    "canNightShift": true,
+    "canMentor": false
+  },
+  {
+    "id": "EMP-008",
+    "name": "小林 勇",
+    "role": "介護職",
+    "skills": [
+      "基本介護"
+    ],
+    "canNightShift": true,
+    "canMentor": false
+  },
+  {
+    "id": "EMP-009",
+    "name": "伊藤 里奈",
+    "role": "介護職",
+    "skills": [
+      "基本介護",
+      "医療的ケア"
+    ],
+    "canNightShift": true,
+    "canMentor": true
+  },
+  {
+    "id": "EMP-010",
+    "name": "中村 太郎",
+    "role": "介護職",
+    "skills": [
+      "基本介護"
+    ],
+    "canNightShift": true,
+    "canMentor": false
+  },
+  {
+    "id": "EMP-011",
+    "name": "加藤 優子",
+    "role": "介護職",
+    "skills": [
+      "基本介護"
+    ],
+    "canNightShift": true,
+    "canMentor": false
+  },
+  {
+    "id": "EMP-012",
+    "name": "清水 健太",
+    "role": "介護職",
+    "skills": [
+      "基本介護",
+      "医療的ケア"
+    ],
+    "canNightShift": true,
+    "canMentor": true
+  },
+  {
+    "id": "EMP-013",
+    "name": "斎藤 由美",
+    "role": "介護職",
+    "skills": [
+      "基本介護"
+    ],
+    "canNightShift": true,
+    "canMentor": false
+  },
+  {
+    "id": "EMP-014",
+    "name": "松本 大輔",
+    "role": "介護職",
+    "skills": [
+      "基本介護",
+      "医療的ケア"
+    ],
+    "canNightShift": true,
+    "canMentor": true
+  },
+  {
+    "id": "EMP-015",
+    "name": "井上 美穂",
+    "role": "介護職",
+    "skills": [
+      "基本介護"
+    ],
+    "canNightShift": false,
+    "canMentor": true
+  },
+  {
+    "id": "EMP-016",
+    "name": "木村 翔太",
+    "role": "介護職",
+    "skills": [
+      "基本介護"
+    ],
+    "canNightShift": true,
+    "canMentor": false
+  },
+  {
+    "id": "EMP-017",
+    "name": "美咲",
+    "role": "介護職",
+    "skills": [
+      "基本介護",
+      "医療的ケア"
+    ],
+    "canNightShift": true,
+    "canMentor": false,
+    "preferences": {
+      "breakPreferred": "02:00",
+      "leaveBy": "18:00",
+      "shiftPreference": "夜勤希望"
+    }
+  },
+  {
+    "id": "EMP-018",
+    "name": "森 絵里",
+    "role": "介護職",
+    "skills": [
+      "基本介護"
+    ],
+    "canNightShift": true,
+    "canMentor": false
+  },
+  {
+    "id": "EMP-019",
+    "name": "橋本 陽介",
+    "role": "介護職",
+    "skills": [
+      "基本介護",
+      "医療的ケア"
+    ],
+    "canNightShift": true,
+    "canMentor": true
+  },
+  {
+    "id": "EMP-020",
+    "name": "山口 明美",
+    "role": "介護職",
+    "skills": [
+      "基本介護"
+    ],
+    "canNightShift": false,
+    "canMentor": true
+  },
+  {
+    "id": "EMP-021",
+    "name": "リナ",
+    "role": "介護職",
+    "skills": [
+      "基本介護",
+      "医療的ケア"
+    ],
+    "canNightShift": true,
+    "canMentor": false
+  },
+  {
+    "id": "EMP-037",
+    "name": "石川 航",
+    "role": "介護職",
+    "skills": [
+      "基本介護"
+    ],
+    "canNightShift": true,
+    "canMentor": false
+  },
+  {
+    "id": "EMP-022",
+    "name": "中島 千尋",
+    "role": "介護職",
+    "skills": [
+      "基本介護",
+      "医療的ケア"
+    ],
+    "canNightShift": true,
+    "canMentor": true
+  },
+  {
+    "id": "EMP-023",
+    "name": "青木 雄一",
+    "role": "介護職",
+    "skills": [
+      "基本介護"
+    ],
+    "canNightShift": true,
+    "canMentor": false
+  },
+  {
+    "id": "EMP-024",
+    "name": "福田 美咲",
+    "role": "介護職",
+    "skills": [
+      "基本介護"
+    ],
+    "canNightShift": true,
+    "canMentor": false
+  },
+  {
+    "id": "EMP-025",
+    "name": "三浦 拓海",
+    "role": "介護職",
+    "skills": [
+      "基本介護",
+      "医療的ケア"
+    ],
+    "canNightShift": true,
+    "canMentor": true
+  },
+  {
+    "id": "EMP-026",
+    "name": "藤田 彩",
+    "role": "介護職",
+    "skills": [
+      "基本介護"
+    ],
+    "canNightShift": false,
+    "canMentor": false
+  },
+  {
+    "id": "EMP-027",
+    "name": "岡田 晃",
+    "role": "介護職",
+    "skills": [
+      "基本介護"
+    ],
+    "canNightShift": true,
+    "canMentor": false
+  },
+  {
+    "id": "EMP-028",
+    "name": "村上 奈々",
+    "role": "介護職",
+    "skills": [
+      "基本介護",
+      "医療的ケア"
+    ],
+    "canNightShift": true,
+    "canMentor": true
+  },
+  {
+    "id": "EMP-029",
+    "name": "前田 隆",
+    "role": "介護職",
+    "skills": [
+      "基本介護"
+    ],
+    "canNightShift": true,
+    "canMentor": false
+  },
+  {
+    "id": "EMP-030",
+    "name": "長谷川 舞",
+    "role": "介護職",
+    "skills": [
+      "基本介護"
+    ],
+    "canNightShift": true,
+    "canMentor": false
+  },
+  {
+    "id": "EMP-031",
+    "name": "横山 直美",
+    "role": "事務",
+    "skills": [
+      "経理",
+      "労務管理"
+    ],
+    "workHours": "9:00-18:00",
+    "tasks": "給与計算、勤怠管理"
+  },
+  {
+    "id": "EMP-032",
+    "name": "安藤 誠一",
+    "role": "調理",
+    "skills": [
+      "調理師免許",
+      "栄養士"
+    ],
+    "mealSlots": [
+      "朝食",
+      "昼食",
+      "夕食"
+    ],
+    "hygieneCert": true
+  },
+  {
+    "id": "EMP-033",
+    "name": "宮本 梨花",
+    "role": "清掃",
+    "areas": [
+      "1F-3F共用部",
+      "浴室"
+    ],
+    "workHours": "8:00-12:00"
+  },
+  {
+    "id": "EMP-034",
+    "name": "川口 大樹",
+    "role": "送迎",
+    "licenseType": "普通二種",
+    "vehicles": [
+      "ワゴン車2台"
+    ],
+    "routes": [
+      "病院送迎",
+      "買い物送迎"
+    ]
+  },
+  {
+    "id": "EMP-035",
+    "name": "中川 由紀",
+    "role": "看護師",
+    "skills": [
+      "看護師資格",
+      "医療的ケア"
+    ],
+    "workHours": "9:00-18:00",
+    "onCall": true
+  }
+]

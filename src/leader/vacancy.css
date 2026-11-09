@@ -1,0 +1,19 @@
+/* 該当の行だけを見せるスケジュール（フォーカス表示） */
+.focus { display: flex; flex-direction: column; gap: 4px; }
+.fboard { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--bg); }
+.fgrid { display: grid; grid-template-columns: minmax(84px, 112px) 1fr; gap: 6px 8px; align-items: center; }
+.fl { font-size: 13px; line-height: 1.3; min-width: 0; }
+.fl .fn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fl .fs { font-size: 11px; color: var(--tx2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fl.ghost { color: var(--bad); } .fl.ghost s { text-decoration-color: var(--bad); text-decoration-thickness: 2px; }
+.fl.gl { color: var(--bad); font-size: 12px; }
+.ftag { height: 20px; font-size: 11px; margin-top: 2px; }
+.fgrid .mtrack { height: 32px; }
+.fgrid .mtrack.axis { height: 18px; }
+.mb.chg { box-shadow: inset 0 0 0 2px var(--pri); }
+.gaptext { list-style: none; margin: 8px 0 0; display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--bad); }
+.fc-arrow { display: flex; align-items: flex-start; gap: 6px; padding: 6px 4px; font-size: 13px; color: var(--tx); }
+.fc-arrow .ms { margin-top: 1px; color: var(--tx2); }
+@media (max-width: 560px) { .fgrid { grid-template-columns: 84px 1fr; } .fboard { padding: 10px; } }
+.fgrid .mtrack.axis .tick:first-child { transform: none; }
+.fgrid .mtrack.axis .tick:last-child { transform: translateX(-100%); }

@@ -1,0 +1,317 @@
+[
+  {
+    "id": "RES-001",
+    "name": "山本 太郎",
+    "room": "101",
+    "careLevel": 3,
+    "needsMedicalCare": true,
+    "needsNightCheck": true,
+    "notes": "医療的ケア、夜間巡回"
+  },
+  {
+    "id": "RES-002",
+    "name": "田村 花子",
+    "room": "102",
+    "careLevel": 2,
+    "needsMedicalCare": false,
+    "needsNightCheck": false,
+    "notes": ""
+  },
+  {
+    "id": "RES-003",
+    "name": "佐々木 一郎",
+    "room": "103",
+    "careLevel": 4,
+    "needsMedicalCare": true,
+    "needsNightCheck": true,
+    "notes": "医療的ケア、転倒リスク"
+  },
+  {
+    "id": "RES-004",
+    "name": "高田 京子",
+    "room": "104",
+    "careLevel": 1,
+    "needsMedicalCare": false,
+    "needsNightCheck": false,
+    "notes": ""
+  },
+  {
+    "id": "RES-005",
+    "name": "木下 勝",
+    "room": "105",
+    "careLevel": 3,
+    "needsMedicalCare": true,
+    "needsNightCheck": true,
+    "notes": "医療的ケア、夜間巡回"
+  },
+  {
+    "id": "RES-006",
+    "name": "野村 美代子",
+    "room": "106",
+    "careLevel": 2,
+    "needsMedicalCare": false,
+    "needsNightCheck": false,
+    "notes": ""
+  },
+  {
+    "id": "RES-007",
+    "name": "大野 俊夫",
+    "room": "201",
+    "careLevel": 5,
+    "needsMedicalCare": true,
+    "needsNightCheck": true,
+    "notes": "医療的ケア、転倒リスク、夜間巡回"
+  },
+  {
+    "id": "RES-008",
+    "name": "小野 良子",
+    "room": "202",
+    "careLevel": 2,
+    "needsMedicalCare": false,
+    "needsNightCheck": true,
+    "notes": "夜間巡回"
+  },
+  {
+    "id": "RES-009",
+    "name": "竹内 正",
+    "room": "203",
+    "careLevel": 3,
+    "needsMedicalCare": true,
+    "needsNightCheck": false,
+    "notes": "医療的ケア"
+  },
+  {
+    "id": "RES-010",
+    "name": "林 恵子",
+    "room": "204",
+    "careLevel": 1,
+    "needsMedicalCare": false,
+    "needsNightCheck": false,
+    "notes": ""
+  },
+  {
+    "id": "RES-011",
+    "name": "原 春男",
+    "room": "205",
+    "careLevel": 4,
+    "needsMedicalCare": true,
+    "needsNightCheck": true,
+    "notes": "医療的ケア、転倒リスク"
+  },
+  {
+    "id": "RES-012",
+    "name": "坂本 静江",
+    "room": "206",
+    "careLevel": 2,
+    "needsMedicalCare": false,
+    "needsNightCheck": false,
+    "notes": ""
+  },
+  {
+    "id": "RES-013",
+    "name": "内田 武",
+    "room": "301",
+    "careLevel": 3,
+    "needsMedicalCare": true,
+    "needsNightCheck": true,
+    "notes": "医療的ケア、夜間巡回"
+  },
+  {
+    "id": "RES-014",
+    "name": "池田 和子",
+    "room": "302",
+    "careLevel": 2,
+    "needsMedicalCare": false,
+    "needsNightCheck": false,
+    "notes": ""
+  },
+  {
+    "id": "RES-015",
+    "name": "西村 清",
+    "room": "303",
+    "careLevel": 4,
+    "needsMedicalCare": true,
+    "needsNightCheck": true,
+    "notes": "医療的ケア、転倒リスク、夜間巡回"
+  },
+  {
+    "id": "RES-016",
+    "name": "谷口 千代",
+    "room": "304",
+    "careLevel": 1,
+    "needsMedicalCare": false,
+    "needsNightCheck": false,
+    "notes": ""
+  },
+  {
+    "id": "RES-017",
+    "name": "堀 健二",
+    "room": "305",
+    "careLevel": 3,
+    "needsMedicalCare": true,
+    "needsNightCheck": true,
+    "notes": "医療的ケア、夜間巡回"
+  },
+  {
+    "id": "RES-018",
+    "name": "平野 さよ",
+    "room": "306",
+    "careLevel": 2,
+    "needsMedicalCare": false,
+    "needsNightCheck": false,
+    "notes": ""
+  },
+  {
+    "id": "RES-019",
+    "name": "石田 光男",
+    "room": "401",
+    "careLevel": 5,
+    "needsMedicalCare": true,
+    "needsNightCheck": true,
+    "notes": "医療的ケア、転倒リスク、夜間巡回"
+  },
+  {
+    "id": "RES-020",
+    "name": "宮崎 直子",
+    "room": "402",
+    "careLevel": 2,
+    "needsMedicalCare": false,
+    "needsNightCheck": true,
+    "notes": "夜間巡回"
+  },
+  {
+    "id": "RES-021",
+    "name": "吉川 信夫",
+    "room": "403",
+    "careLevel": 3,
+    "needsMedicalCare": true,
+    "needsNightCheck": false,
+    "notes": "医療的ケア"
+  },
+  {
+    "id": "RES-022",
+    "name": "岡村 美枝",
+    "room": "404",
+    "careLevel": 2,
+    "needsMedicalCare": false,
+    "needsNightCheck": false,
+    "notes": ""
+  },
+  {
+    "id": "RES-023",
+    "name": "松田 孝",
+    "room": "405",
+    "careLevel": 4,
+    "needsMedicalCare": true,
+    "needsNightCheck": true,
+    "notes": "医療的ケア、転倒リスク"
+  },
+  {
+    "id": "RES-024",
+    "name": "上田 春江",
+    "room": "406",
+    "careLevel": 1,
+    "needsMedicalCare": false,
+    "needsNightCheck": false,
+    "notes": ""
+  },
+  {
+    "id": "RES-025",
+    "name": "杉山 勇",
+    "room": "501",
+    "careLevel": 3,
+    "needsMedicalCare": true,
+    "needsNightCheck": true,
+    "notes": "医療的ケア、夜間巡回"
+  },
+  {
+    "id": "RES-026",
+    "name": "河野 節子",
+    "room": "502",
+    "careLevel": 2,
+    "needsMedicalCare": false,
+    "needsNightCheck": false,
+    "notes": ""
+  },
+  {
+    "id": "RES-027",
+    "name": "藤原 明",
+    "room": "503",
+    "careLevel": 4,
+    "needsMedicalCare": true,
+    "needsNightCheck": true,
+    "notes": "医療的ケア、転倒リスク、夜間巡回"
+  },
+  {
+    "id": "RES-028",
+    "name": "細川 千鶴",
+    "room": "504",
+    "careLevel": 2,
+    "needsMedicalCare": false,
+    "needsNightCheck": false,
+    "notes": ""
+  },
+  {
+    "id": "RES-029",
+    "name": "永井 栄一",
+    "room": "505",
+    "careLevel": 3,
+    "needsMedicalCare": true,
+    "needsNightCheck": true,
+    "notes": "医療的ケア、夜間巡回"
+  },
+  {
+    "id": "RES-030",
+    "name": "島田 道子",
+    "room": "506",
+    "careLevel": 1,
+    "needsMedicalCare": false,
+    "needsNightCheck": false,
+    "notes": ""
+  },
+  {
+    "id": "RES-031",
+    "name": "北村 茂",
+    "room": "601",
+    "careLevel": 5,
+    "needsMedicalCare": true,
+    "needsNightCheck": true,
+    "notes": "医療的ケア、転倒リスク、夜間巡回"
+  },
+  {
+    "id": "RES-032",
+    "name": "野口 寿子",
+    "room": "602",
+    "careLevel": 2,
+    "needsMedicalCare": false,
+    "needsNightCheck": true,
+    "notes": "夜間巡回"
+  },
+  {
+    "id": "RES-033",
+    "name": "古川 正夫",
+    "room": "603",
+    "careLevel": 3,
+    "needsMedicalCare": true,
+    "needsNightCheck": false,
+    "notes": "医療的ケア"
+  },
+  {
+    "id": "RES-034",
+    "name": "今井 芳江",
+    "room": "604",
+    "careLevel": 2,
+    "needsMedicalCare": false,
+    "needsNightCheck": false,
+    "notes": ""
+  },
+  {
+    "id": "RES-035",
+    "name": "酒井 勝彦",
+    "room": "605",
+    "careLevel": 4,
+    "needsMedicalCare": true,
+    "needsNightCheck": true,
+    "notes": "医療的ケア、転倒リスク、夜間巡回"
+  }
+]

@@ -1,0 +1,8 @@
+FROM python:3.12-slim
+ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
+RUN pip install pandas numpy scikit-learn xgboost pydantic pyarrow db-dtypes \
+    google-cloud-bigquery google-cloud-storage google-cloud-aiplatform "kfp>=2.7"
+WORKDIR /srv
+# 学習・反復検出に必要な部分だけ（ソルバーや API は含めない）
+COPY care/__init__.py care/dsl.py care/vocab.py ./care/
+COPY care/learn ./care/learn
