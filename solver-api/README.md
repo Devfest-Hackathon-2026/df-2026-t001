@@ -13,7 +13,7 @@ python scripts/smoke.py https://care-solver-api-h5p5nqo3qa-an.a.run.app fac-hida
 ```
 
 合成データの生成は `../scripts/synth/`。ルールの数値はすべてデモ用の仮値で、法令・施設基準の数値ではない。
-参考: ben1san/df-hack26 の設計の考え方（コードは複製していない）。
+参考: ben1san/df-hack26（チームメンバーの作品） の設計の考え方（コードは複製していない）。
 
 ## AI（Gemini）
 
