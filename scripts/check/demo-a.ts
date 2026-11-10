@@ -1,5 +1,5 @@
-// 動画シナリオ(d02-d05)の headless 確認。
-// 実行: npx esbuild scripts/check/video-a.ts --bundle --platform=node --format=esm --outfile=/tmp/video-a.mjs && node /tmp/video-a.mjs
+// デモシナリオ(d02-d05)の headless 確認。
+// 実行: npx esbuild scripts/check/demo-a.ts --bundle --platform=node --format=esm --outfile=/tmp/demo-a.mjs && node /tmp/demo-a.mjs
 import * as S from '../../src/core/store';
 import { MY_ID, staffById } from '../../src/core/facility';
 import { adjustChecks } from '../../src/leader/Delegate';

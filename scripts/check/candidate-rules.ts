@@ -1,8 +1,8 @@
 // 「代わりに入れる人は、ソルバーの必須ルールを破らない候補に限る」の headless 確認（デモの欠員で、候補が誤って外れないこと）。
 // 実の経路: store.delegateAutopilot → apirank.rankViaApi（cells つき）→ ローカルの care-solver-api → inline_verify → 打診の列。
 // 実行（solver-api をローカルで起動しておく: cd solver-api && .venv/bin/uvicorn care.server:app --port 8137）:
-//   npx esbuild scripts/check/match-e2.ts --bundle --platform=node --format=esm --outfile=/tmp/match-e2.mjs \
-//     --define:import.meta.env='{"VITE_SOLVER_URL":"http://127.0.0.1:8137"}' && node /tmp/match-e2.mjs
+//   npx esbuild scripts/check/candidate-rules.ts --bundle --platform=node --format=esm --outfile=/tmp/candidate-rules.mjs \
+//     --define:import.meta.env='{"VITE_SOLVER_URL":"http://127.0.0.1:8137"}' && node /tmp/candidate-rules.mjs
 import * as S from '../../src/core/store';
 import { MY_ID, STAFF, staffById } from '../../src/core/facility';
 import { rankRequest } from '../../src/core/apirank';
@@ -91,7 +91,7 @@ await S.delegateAutopilot(j, {}, true);
 const jq = vac(j).auto?.queue ?? [];
 console.log('  queue:', jq.map(nm).join(' > '));
 console.log('  log:', (vac(j).auto?.log ?? []).filter((l) => l.text.includes('必須ルール')).map((l) => l.text).join(' | '));
-ok(jq.length === 1, '11/25 夜勤: 動画どおり内部の候補は1人（maxCandidates=1）');
+ok(jq.length === 1, '11/25 夜勤: デモの設定どおり内部の候補は1人（maxCandidates=1）');
 const w = vac(j).offers.find((o) => o.status === 'pending')?.staffId;
 ok(!!w, `11/25 夜勤: 候補に打診中 (${w ? nm(w) : 'none'})`);
 if (w) S.respondOffer(j, w, false);

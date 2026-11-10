@@ -1,8 +1,8 @@
 // 欠員の日だけの組み直し（POST /api/v1/replan-inline）を、画面の store を headless で動かして確かめる。
 // ローカルの API を立ててから:
 //   (cd solver-api && .venv/bin/python -m uvicorn care.server:app --port 8765)
-//   npx esbuild scripts/check/replan-e3.ts --bundle --platform=node --format=esm \
-//     '--define:import.meta.env={"VITE_SOLVER_URL":"http://127.0.0.1:8765"}' --outfile=/tmp/replan-e3.mjs && node /tmp/replan-e3.mjs
+//   npx esbuild scripts/check/replan.ts --bundle --platform=node --format=esm \
+//     '--define:import.meta.env={"VITE_SOLVER_URL":"http://127.0.0.1:8765"}' --outfile=/tmp/replan.mjs && node /tmp/replan.mjs
 // API を止めた状態（接続できない）でも、従来どおりに動くことを確かめる: VITE_SOLVER_URL を http://127.0.0.1:9 にして同じ手順。
 import * as S from '../../src/core/store';
 import { MY_ID, staffById } from '../../src/core/facility';

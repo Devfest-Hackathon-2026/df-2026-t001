@@ -64,7 +64,7 @@ function seed(): State {
     { id: 'N3', to: 'leader', title: '出勤前チェック：未入力が多数', body: '今夜の夜勤4名のうち、体調チェック済みは0名です。', at: t('12:00'), read: false, kind: 'health' },
     { id: 'N4', to: 'leader', title: '欠員が3件あります', body: '11/22 遅番（つぼみ）・11/25 夜勤（ひなた）・11/27 早番（そよかぜ）', at: t('07:30'), read: false, kind: 'shift' },
   ];
-  // 動画の台本に合わせた固定データ：加藤さんが11/20の夜勤に入れるよう、前後の勤務を整える
+  // デモ用の固定データ：加藤さんが11/20の夜勤に入れるよう、前後の勤務を整える
   assignments.forEach((a, i) => { if (a.staffId === 'EMP-009' && a.date === '2026-11-21' && a.shift === '早番') assignments[i] = { ...a, staffId: 'EMP-018' }; });
   const pick = (date: string, shift: ShiftCode) => assignments.find((a) => a.date === date && a.shift === shift && a.staffId !== MY_ID)!;
   const a1 = pick('2026-11-24', '日勤'); const a2 = pick('2026-11-19', '日勤');
@@ -92,7 +92,7 @@ function seed(): State {
   // デモで見やすいよう、欠員の日に「入れる日」を出していた人を用意する
   const pin = (id: string, d: string, k: ShiftCode) => { (availability[id] ??= []).push({ date: d, shifts: [k] }); };
   pin('EMP-026', '2026-11-20', '夜勤'); pin('EMP-009', '2026-11-20', '夜勤'); pin('EMP-019', '2026-11-20', '夜勤'); pin('EMP-004', '2026-11-24', '日勤'); pin('EMP-012', '2026-11-22', '遅番');
-  return { v: VERSION, today: DEMO_TODAY, now: `${DEMO_TODAY} 14:00`, autopilot: { enabled: true, maxCandidates: 5, waitSameDay: 30, waitOther: 120, quietStart: '22:00', quietEnd: '07:00', defaultReward: '時給2,200円（単発）', useAdjust: true, autoPost: true, adjustKinds: { break: true, support: true, extend: true }, priority: { availFirst: true, skill: 'normal', days: 'normal' }, jobNote: 'ユニット型の少人数ケア。仮眠・休憩は交代で確実に取れます。' }, assignments, vacancies: initialVacancies(assignments).map((v) => (v.date === '2026-11-25' && v.shift === '夜勤' ? { ...v, opts: { maxCandidates: 1 } } : v)), /* 動画用：この欠員は内部の候補を1人だけにして求人へ進める */ requests, messages, notices, health, prefs, settings, collection: { month: '2026-12', deadline: '2026-11-25', submitted }, availability, events: SEED_EVENTS, spareUse: {} };
+  return { v: VERSION, today: DEMO_TODAY, now: `${DEMO_TODAY} 14:00`, autopilot: { enabled: true, maxCandidates: 5, waitSameDay: 30, waitOther: 120, quietStart: '22:00', quietEnd: '07:00', defaultReward: '時給2,200円（単発）', useAdjust: true, autoPost: true, adjustKinds: { break: true, support: true, extend: true }, priority: { availFirst: true, skill: 'normal', days: 'normal' }, jobNote: 'ユニット型の少人数ケア。仮眠・休憩は交代で確実に取れます。' }, assignments, vacancies: initialVacancies(assignments).map((v) => (v.date === '2026-11-25' && v.shift === '夜勤' ? { ...v, opts: { maxCandidates: 1 } } : v)), /* デモ用：この欠員は内部の候補を1人だけにして求人へ進める */ requests, messages, notices, health, prefs, settings, collection: { month: '2026-12', deadline: '2026-11-25', submitted }, availability, events: SEED_EVENTS, spareUse: {} };
 }
 
 let state: State = load();
@@ -567,7 +567,7 @@ export function remindUnsubmitted(): number {
 // ---- デモの自動進行（打診の返信・求人の応募） ----
 const demoDone = new Set<string>();
 /** デモの返信シナリオ：内部の候補が1人だけ→辞退（→求人へ）／複数→1人目は返信なし（期限切れで次へ）、2人目以降は承諾 */
-/** デモ用の返信の筋書き。候補の順番が学習した予測で変わっても、加藤さんが「入れる」と返信し、後藤さんは返信しない（動画の筋と同じ） */
+/** デモ用の返信の筋書き。候補の順番が学習した予測で変わっても、加藤さんが「入れる」と返信し、後藤さんは返信しない */
 export function demoPlan(v: Vacancy, staffId?: string): 'silent' | 'decline' | 'accept' {
   if ((v.auto?.queue.length ?? 0) <= 1) return 'decline';
   const nm = staffId ? staffById(staffId)?.name ?? '' : '';
