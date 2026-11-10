@@ -50,13 +50,13 @@
 3. **AIアシスタント** — データを調べて答えるチャット（変更は提案だけ、実行はボタン）、言葉からルール候補（範囲を選んで保存）、手修正のくり返しから見つけたルール候補（採用／却下は人が決める）。
 4. **学習の状況** — 施設ごとのモデル精度、比べた候補、学習履歴、昇格できたか。
 
-公開デモのため、書き込みの API には認証がありません（IP ごとのレート制限・同時求解の上限・AI の利用上限あり）。操作内容は他の閲覧者にも見えます。
+公開デモのため、書き込みの API には認証がありません（IP ごとのレート制限・同時求解の上限・AI の利用上限・入力の値と大きさの検査あり。固定の初期ルールは止められず、必須ルールの値は施設の人数の範囲に制限）。操作内容は他の閲覧者にも見えます。
 
 ## Google Cloud で動く仕組み
 
 ![アーキテクチャ](docs/architecture.svg)
 
-職員とリーダーは Firebase Hosting 経由でアプリを使います。探して組むのは Cloud Run 上の最適化ソルバーです。AI に渡す前に氏名を置き換え、Sensitive Data Protection で個人情報を伏せ、Gemini は Vertex AI 上で言葉をルールに翻訳し、理由を説明します（提案だけで、勤務表は勝手に変わりません）。変更は上書きせず追記で記録し、Firestore に保存、Pub/Sub から BigQuery に蓄積します。毎週その記録を学習し、施設ごとの特性や傾向に合わせて、打診の順番が育っていきます。データは東京リージョンに置きます（Gemini の呼び出しだけは Vertex AI のグローバルエンドポイントを使います）。
+職員とリーダーは Firebase Hosting 経由でアプリを使います。探して組むのは Cloud Run 上の最適化ソルバーです。AI に渡す前に氏名を置き換え、Sensitive Data Protection で個人情報を伏せ、Gemini は Vertex AI 上で言葉をルールに翻訳し、理由を説明します（提案だけで、勤務表は勝手に変わりません）。変更は上書きせず追記で記録し、Firestore に保存、Pub/Sub から BigQuery に蓄積します。毎週その記録を学習し、施設ごとの特性や傾向に合わせて、打診の順番が育っていきます（公開デモは認証なしで誰でも書き込めるため、デモの操作から出たイベントは既定では学習に使わず、合成データで学習します。認証つきの運用で出どころを明示したイベントだけを、件数の上限つきで取り込めます）。データは東京リージョンに置きます（Gemini の呼び出しだけは Vertex AI のグローバルエンドポイントを使います）。
 
 | Google の技術 | 使っている理由 |
 |---|---|
@@ -65,9 +65,9 @@
 | **Vertex AI（Gemini）** | ルールの翻訳（Pro）、説明の言い換えとチャット（Flash）。API キーは無く、サービスアカウントの認証だけ。 |
 | **Vertex AI Pipelines / Model Registry** | 施設ごとに応諾予測を週次で学習。3 種類のモデルを交差検証で比べ、基準に勝てたものだけ昇格し、Registry に登録。 |
 | **BigQuery** | 履歴・特徴量・out-of-fold の予測・学習の記録。チャットは決まった集計だけを読み取り専用で実行。 |
-| **Firestore** | 施設・提案（不変）・手修正（追記のみ）・欠員。表を上書きする API は存在しない。 |
-| **Pub/Sub** | 業務イベント（打診・応答など）を BigQuery へ。次回の学習データになる。 |
-| **Sensitive Data Protection** | AI に渡す前に、氏名・電話・メールなどを伏せ字に（マスクできなければ AI を呼ばない）。 |
+| **Firestore** | 施設・提案（不変）・手修正（追記のみ）・欠員。ソルバー側に表を上書きする API は存在しない。画面の状態の同期（`care-api`）は版数つきで、2 台が同時に更新したら 409 を返し、端末側で項目ごとにマージして送り直す（どちらの変更も消さない）。 |
+| **Pub/Sub** | 業務イベント（打診・応答など）を BigQuery へ。イベントには出どころ（`source`）が付き、公開デモの分は既定で学習に使わない（データ汚染の対策）。 |
+| **Sensitive Data Protection** | AI に渡す前に、氏名・電話・メールなどを伏せ字に（質問文だけでなくチャットの履歴・ルール名・職員名の一覧も対象。マスクできなければ AI を呼ばない）。 |
 | **Cloud Storage** | 昇格したモデルと反復検出の候補の置き場（API が読み込んで採点）。 |
 | **Firebase Hosting** | 画面の配信。CSP・プレビューチャンネルで確認してから公開。 |
 | **Terraform / GitHub Actions（WIF）** | インフラをコード化。鍵ファイルなしで、テスト → ビルド → デプロイ。 |
@@ -81,7 +81,7 @@
 | 応諾予測（交差検証 AUC） | さくら苑 0.77（基準より対数損失 +18%）、みどりの丘 0.70（+7%）、**ひだまりの家は基準に勝てず昇格せず**（164件では不足） |
 | 手修正のくり返しの検出 | 月次は隠れたルール 9 件中 7 件を再現、日次は 7 件中 7 件。誤検出は 0 件 |
 | AI（本物の Gemini） | ルール翻訳 22/22（Pro）、チャットは期待どおりのツールを呼べた 17/17、返答に元データに無い数字なし |
-| テスト | solver-api 157 件（`cd solver-api && python -m pytest -q`） |
+| テスト | solver-api 203 件（`cd solver-api && python -m pytest -q`）、care-api 18 件（`cd api && python -m pytest -q`） |
 
 **限界**: 精度は合成データで「埋め込んだ傾向を再現できたか」を示すもので、実運用での精度ではありません。評価の問い（翻訳 22 件・チャット 17 問）は開発者が書いたもので、独立した検証ではありません。順位付けの効果は AUC・対数損失でしか測っていません（本物の打診での A/B はありません）。
 
@@ -100,9 +100,10 @@ python3 scripts/synth/generate.py --out scripts/synth/out
 
 # API のテスト（GCP には接続しない）
 cd solver-api && python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt && .venv/bin/python -m pytest -q
+cd api && python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt && .venv/bin/python -m pytest -q   # 画面の状態同期（care-api）
 
 # 画面（開発サーバー）
-npm install && npm run dev        # http://localhost:5173 （左のナビ「学習AI」でソルバーなどを呼ぶ）
+npm ci && npm run dev        # http://localhost:5173 （左のナビ「学習AI」でソルバーなどを呼ぶ）
 ```
 
 デプロイ・学習パイプライン・評価の手順: [solver-api/README.md](solver-api/README.md)、[solver-api/pipelines/README.md](solver-api/pipelines/README.md)。

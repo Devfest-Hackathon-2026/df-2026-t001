@@ -1,7 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { SKILLS, TASKS, TASK_GROUPS, UNITS, residentsOf, staffById, unitName } from '../core/facility';
-import type { Resident, SkillId, Staff, TaskKind } from '../core/types';
+import { SKILLS, TASK_GROUPS, UNITS, residentsOf, staffById, unitName } from '../core/facility';
+import type { Resident, SkillId, Staff } from '../core/types';
 import { resetDemo } from '../core/store';
 
 export const Icon = ({ n, fill, sm }: { n: string; fill?: boolean; sm?: boolean }) => <span class={`ms${fill ? ' fill' : ''}${sm ? ' sm' : ''}`} aria-hidden="true">{n}</span>;
@@ -22,7 +22,6 @@ export function Modal({ title, onClose, children, footer, wide }: { title: strin
 
 export const SkillChips = ({ ids }: { ids: SkillId[] }) => <span class="row" style="flex-wrap:wrap;gap:4px">{ids.length ? ids.map((k) => <span key={k} class={`chip ${k === 'medical' ? 'bad' : 'pri'}`}>{SKILLS[k].label}</span>) : <span class="muted">特記スキルなし</span>}</span>;
 
-export const TaskChip = ({ kind }: { kind: TaskKind }) => <span class="chip" style={`background:${TASKS[kind].bg};color:${TASKS[kind].fg}${kind === 'break' || kind === 'nap' ? ';border:1px dashed var(--line)' : ''}`}>{TASKS[kind].label}</span>;
 
 export function Legend() {
   return <div class="row" style="flex-wrap:wrap;gap:6px">{(Object.keys(TASK_GROUPS) as (keyof typeof TASK_GROUPS)[]).map((g) => <span key={g} class="chip" style={`background:${TASK_GROUPS[g].bg};color:${TASK_GROUPS[g].fg}${g === 'rest' ? ';border:1px dashed var(--line)' : ''}`}>{TASK_GROUPS[g].label}</span>)}</div>;

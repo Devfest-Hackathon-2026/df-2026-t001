@@ -33,6 +33,7 @@ MAX_TIME = 18.0
 APP_MAX_RUN = 5       # 画面の LABOR_RULES.maxConsecutive（夜勤明けも勤務日に数える）
 APP_MIN_OFF = 8       # 画面の LABOR_RULES.minOffDays（常勤の公休。明けは公休に数えない）
 APP_MAX_NIGHTS = 8    # 画面の LABOR_RULES.maxNightsPerMonth
+MAX_KEYS = 120        # day_off などの職員キーの上限（staff の上限 80 より余裕をみる）
 
 
 class InlineStaff(BaseModel):
@@ -60,14 +61,44 @@ class InlineSolveIn(BaseModel):
     days: int | None = Field(None, ge=28, le=31)
     first_weekday: int | None = Field(None, ge=0, le=6)
     staff: list[InlineStaff] = Field(min_length=1, max_length=80)
-    need_per_shift: dict[str, int] = Field(default_factory=lambda: {k: 4 for k in WORK_SHIFTS})
-    day_off: dict[str, list[int]] = Field(default_factory=dict)       # 希望休（強く）
-    unavailable: dict[str, list[int]] = Field(default_factory=dict)   # 入れない日（絶対）。例: 主任の土日
-    keep_free: dict[str, list[int]] = Field(default_factory=dict)     # 「入れる日」を出した人は補欠として残したい（できれば）
-    carry_in: dict[str, str] = Field(default_factory=dict)            # 前月末日の勤務（夜勤なら1日は明け）
-    extra: dict[str, dict[str, int]] = Field(default_factory=dict)    # "YYYY-MM-DD" -> {勤務区分: 追加人数}
+    need_per_shift: dict[str, int] = Field(default_factory=lambda: {k: 4 for k in WORK_SHIFTS}, max_length=4)
+    day_off: dict[str, list[int]] = Field(default_factory=dict, max_length=MAX_KEYS)       # 希望休（強く）
+    unavailable: dict[str, list[int]] = Field(default_factory=dict, max_length=MAX_KEYS)   # 入れない日（絶対）。例: 主任の土日
+    keep_free: dict[str, list[int]] = Field(default_factory=dict, max_length=MAX_KEYS)     # 「入れる日」を出した人は補欠として残したい（できれば）
+    carry_in: dict[str, str] = Field(default_factory=dict, max_length=MAX_KEYS)            # 前月末日の勤務（夜勤なら1日は明け）
+    extra: dict[str, dict[str, int]] = Field(default_factory=dict, max_length=31)          # "YYYY-MM-DD" -> {勤務区分: 追加人数}
     night_max: int | None = Field(None, ge=1, le=15)
     time_limit: float = Field(12.0, ge=1, le=MAX_TIME)
+
+    @field_validator("day_off", "unavailable", "keep_free")
+    @classmethod
+    def _per_staff_days(cls, v: dict[str, list[int]]) -> dict[str, list[int]]:
+        for sid, ds in v.items():
+            if len(sid) > 40 or len(ds) > 31:
+                raise ValueError(f"職員ごとの日は31件まで・staff_id は40文字まで: {sid[:40]}")
+        return v
+
+    @field_validator("carry_in")
+    @classmethod
+    def _carry(cls, v: dict[str, str]) -> dict[str, str]:
+        for sid, k in v.items():
+            if len(sid) > 40 or len(k) > 4:
+                raise ValueError(f"carry_in が不正です: {sid[:40]}")
+        return v
+
+    @field_validator("extra")
+    @classmethod
+    def _extra(cls, v: dict[str, dict[str, int]]) -> dict[str, dict[str, int]]:
+        for ds, row in v.items():
+            try:
+                if len(ds) != 10:
+                    raise ValueError
+                date.fromisoformat(ds)
+            except ValueError:
+                raise ValueError(f"extra の日付は YYYY-MM-DD: {ds[:12]}") from None
+            if len(row) > 4:
+                raise ValueError(f"extra の勤務区分は4つまで: {ds}")
+        return v
 
     @field_validator("need_per_shift")
     @classmethod

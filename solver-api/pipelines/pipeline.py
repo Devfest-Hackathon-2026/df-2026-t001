@@ -11,26 +11,29 @@
   python pipelines/pipeline.py schedule                # 週次（月曜 03:00 JST）の実行を作る
 """
 import json
+import os
 import sys
 from datetime import datetime, timezone
 
 from kfp import compiler, dsl
 
-PROJECT, LOCATION = "gdgoc-514203", "asia-northeast1"
-ROOT = "gs://gdgoc-514203-vertex-pipelines"
-IMAGE = f"{LOCATION}-docker.pkg.dev/{PROJECT}/cloud-run-source-deploy/care-trainer:v1"
-SA = "pipeline-sa@gdgoc-514203.iam.gserviceaccount.com"
-FACILITIES = ["fac-sakura", "fac-midori", "fac-hidamari"]
+# 既定は今のプロジェクト。環境変数で差し替えられる（別プロジェクトへの再現用）
+PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "gdgoc-514203")
+LOCATION = os.getenv("PIPELINE_LOCATION", "asia-northeast1")
+ROOT = os.getenv("PIPELINE_ROOT", f"gs://{PROJECT}-vertex-pipelines")
+IMAGE = os.getenv("TRAINER_IMAGE", f"{LOCATION}-docker.pkg.dev/{PROJECT}/cloud-run-source-deploy/care-trainer:v1")
+SA = os.getenv("PIPELINE_SA", f"pipeline-sa@{PROJECT}.iam.gserviceaccount.com")
+FACILITIES = [f for f in os.getenv("PIPELINE_FACILITIES", "fac-sakura,fac-midori,fac-hidamari").split(",") if f]
 TEMPLATE = f"{ROOT}/templates/care-learn.json"
 
 
 @dsl.component(base_image=IMAGE)
-def extract_op(project: str, root: str, run_id: str, out: dsl.Output[dsl.Dataset]):
+def extract_op(project: str, root: str, run_id: str, live_sources: str, cap_per_staff: int, cap_per_ip: int, out: dsl.Output[dsl.Dataset]):
     from care.learn import steps
 
-    r = steps.extract(project, root, run_id)
+    r = steps.extract(project, root, run_id, live_sources, cap_per_staff, cap_per_ip)
     out.uri = r["uri"]
-    out.metadata.update({"synthetic_rows": r["synthetic"], "live_rows": r["live"]})
+    out.metadata.update({"synthetic_rows": r["synthetic"], "live_rows": r["live"], "live_sources": live_sources})
 
 
 @dsl.component(base_image=IMAGE)
@@ -62,22 +65,24 @@ def promote_op(project: str, root: str, run_id: str, facility_ids: list, summary
 
 
 @dsl.component(base_image=IMAGE)
-def detect_op(project: str, root: str, facility_ids: list, summary: dsl.Output[dsl.Metrics]):
+def detect_op(project: str, root: str, facility_ids: list, live_sources: str, cap_per_staff: int, cap_per_ip: int, summary: dsl.Output[dsl.Metrics]):
     from care.learn import steps
 
-    for r in steps.detect(project, root, facility_ids):
+    for r in steps.detect(project, root, facility_ids, live_sources, cap_per_staff, cap_per_ip):
         summary.log_metric(f"candidates_{r['facility_id']}", float(r["candidates"]))
 
 
 @dsl.pipeline(name="care-learn", description="施設ごとの応諾予測の学習・昇格と、手修正のくり返しの検出")
-def care_learn(project: str = PROJECT, root: str = ROOT):
+def care_learn(project: str = PROJECT, root: str = ROOT, live_sources: str = "", cap_per_staff: int = 20, cap_per_ip: int = 50):
+    # live_sources: 実運用イベントの出どころ（data.source）をカンマ区切りで。既定 "" は使わない（公開デモ API からの汚染を防ぐ）。
+    # 例 "trusted"（認証つきの運用だけ）/ "trusted,public_api"（公開 API も、上限つきで）
     # 版名には、実行ごとに一意なジョブ ID を使う（週次スケジュールでも成果物を上書きしない）
     run_id = dsl.PIPELINE_JOB_ID_PLACEHOLDER
-    data = extract_op(project=project, root=root, run_id=run_id).set_display_name("extract: BigQuery → 学習データ")
+    data = extract_op(project=project, root=root, run_id=run_id, live_sources=live_sources, cap_per_staff=cap_per_staff, cap_per_ip=cap_per_ip).set_display_name("extract: BigQuery → 学習データ")
     trains = [train_op(project=project, root=root, run_id=run_id, facility_id=f, data=data.outputs["out"]).set_display_name(f"train: {f}")
               .set_cpu_limit("2").set_memory_limit("4G") for f in FACILITIES]
     promote_op(project=project, root=root, run_id=run_id, facility_ids=FACILITIES).after(*trains).set_display_name("promote: gate → champion → Registry → BigQuery")
-    detect_op(project=project, root=root, facility_ids=FACILITIES).set_display_name("detect: 手修正のくり返し → ルール候補")
+    detect_op(project=project, root=root, facility_ids=FACILITIES, live_sources=live_sources, cap_per_staff=cap_per_staff, cap_per_ip=cap_per_ip).set_display_name("detect: 手修正のくり返し → ルール候補")
 
 
 def compile_to(path: str) -> None:
@@ -98,7 +103,8 @@ if __name__ == "__main__":
         b, _, key = TEMPLATE[5:].partition("/")
         storage.Client(project=PROJECT).bucket(b).blob(key).upload_from_filename(local)
         job = aiplatform.PipelineJob(display_name="care-learn", template_path=TEMPLATE, pipeline_root=f"{ROOT}/pipeline_root",
-                                     parameter_values={"project": PROJECT, "root": ROOT}, enable_caching=False)
+                                     parameter_values={"project": PROJECT, "root": ROOT, "live_sources": os.getenv("LIVE_SOURCES", "")},
+                                     enable_caching=False)
         if cmd == "run":
             job.submit(service_account=SA)
             print(json.dumps({"job": job.resource_name, "console": job._dashboard_uri()}))

@@ -24,6 +24,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import threading
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -52,6 +53,8 @@ class Repo(Protocol):
     def add_vacancy(self, fid: str, doc: dict) -> None: ...
     def vacancy(self, fid: str, vid: str) -> dict: ...
     def update_vacancy(self, fid: str, vid: str, patch: dict) -> None: ...
+    def transition_vacancy(self, fid: str, vid: str, allowed: set[str], patch: dict) -> dict | None: ...   # 原子的な比較つき更新
+    def transition_offer(self, fid: str, vid: str, oid: str, allowed: set[str], patch: dict) -> dict | None: ...
     def vacancies(self, fid: str, month: str | None) -> list[dict]: ...
     def add_offer(self, fid: str, vid: str, doc: dict) -> None: ...
     def offer(self, fid: str, vid: str, oid: str) -> dict: ...
@@ -78,6 +81,7 @@ class MemoryRepo:
         self._vac: dict[str, dict[str, dict]] = {}
         self._offers: dict[tuple[str, str], dict[str, dict]] = {}
         self._usage: dict[str, int] = {}
+        self._lock = threading.RLock()        # 比較つき更新（transition_*）を原子的にする
 
     @classmethod
     def from_synth(cls, out: str | os.PathLike) -> "MemoryRepo":
@@ -169,6 +173,23 @@ class MemoryRepo:
     def update_vacancy(self, fid, vid, patch):
         self.vacancy(fid, vid)
         self._vac[fid][vid].update(copy.deepcopy(patch))
+
+    def transition_vacancy(self, fid, vid, allowed, patch):
+        """state が allowed のときだけ patch を当てる（原子的）。当てたら更新前の文書、当てなければ None。"""
+        with self._lock:
+            cur = self.vacancy(fid, vid)
+            if cur.get("state") not in allowed:
+                return None
+            self._vac[fid][vid].update(copy.deepcopy(patch))
+            return cur
+
+    def transition_offer(self, fid, vid, oid, allowed, patch):
+        with self._lock:
+            cur = self.offer(fid, vid, oid)
+            if cur.get("status") not in allowed:
+                return None
+            self._offers[fid, vid][oid].update(copy.deepcopy(patch))
+            return cur
 
     def vacancies(self, fid, month):
         return copy.deepcopy([v for v in self._vac.get(fid, {}).values() if month is None or v["date"].startswith(month)])
@@ -292,6 +313,28 @@ class FirestoreRepo:
 
     def update_vacancy(self, fid, vid, patch):
         self._f(fid).collection("vacancies").document(vid).update(patch)
+
+    def _transition(self, ref, field: str, allowed, patch):
+        """トランザクションで『field が allowed なら patch』。同時の受諾が二重に通らない。"""
+
+        @self._fs.transactional
+        def tx(t):
+            snap = ref.get(transaction=t)
+            if not snap.exists:
+                raise NotFound(ref.id)
+            cur = snap.to_dict() or {}
+            if cur.get(field) not in allowed:
+                return None
+            t.update(ref, patch)
+            return cur
+
+        return tx(self.db.transaction())
+
+    def transition_vacancy(self, fid, vid, allowed, patch):
+        return self._transition(self._f(fid).collection("vacancies").document(vid), "state", allowed, patch)
+
+    def transition_offer(self, fid, vid, oid, allowed, patch):
+        return self._transition(self._offers(fid, vid).document(oid), "status", allowed, patch)
 
     def vacancies(self, fid, month):
         q = self._f(fid).collection("vacancies")

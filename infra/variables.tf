@@ -21,7 +21,7 @@ variable "gemini_model" {
 }
 variable "gemini_fast_model" {
   type    = string
-  default = "gemini-3.8-flash"
+  default = "gemini-3-flash-preview"
 }
 variable "ai_daily_limit" {
   type        = number

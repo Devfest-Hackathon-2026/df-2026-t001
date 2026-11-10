@@ -1,44 +1,37 @@
+# Node / フロントエンド（package-lock.json は再現性のため追跡する）
 node_modules/
-.next/
-.env*
-.DS_Store
-.vercel/
 dist/
 coverage/
-.wrangler/
-.dev.vars
-package-lock.json
+*.log
+.env*
+.DS_Store
+.firebase/
 
+# 手元の検証用スクリプト・スクリーンショット等
 test-*.js
 manual-*.js
 *.png
+*.txt
 screenshots/
 artifacts/
-node_modules/
-package-lock.json
-*.log
-*.txt
 
-# Pitch / hackathon media & project docs (override *.png / *.txt / artifacts)
-!media/
-!media/**
+# ドキュメントは *.png / *.txt 除外の例外として追跡する
 !docs/
 !docs/**
-
-__pycache__/
-.pytest_cache/
-.venv/
-*.tfstate*
-.terraform/
-infra/tfplan*
-.firebase/
 
 # Python 依存定義は追跡する（上の *.txt 除外の例外）
 !api/requirements*.txt
 !solver-api/requirements*.txt
 
+# Python
+__pycache__/
+.pytest_cache/
+.venv/
+
+# Terraform
+*.tfstate*
+.terraform/
+infra/tfplan*
+
 # 合成データの生成物（再生成できる。truth.jsonは検証用の真値なので公開しない）
 scripts/synth/out/
-
-# solver-api
-solver-api/.venv/

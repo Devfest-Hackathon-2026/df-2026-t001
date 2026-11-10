@@ -133,5 +133,11 @@ def test_missing_staff_is_422_and_empty_staff_is_empty(client):
     assert j["candidates"] == [] and j["excluded"] == []
 
 
-def test_route_is_rate_limited_as_light_not_heavy():
-    assert not guard.is_heavy("POST", "/api/v1/rank-candidates") and not guard.is_ai("POST", "/api/v1/rank-candidates")
+def test_route_is_rate_limited_as_heavy():
+    # 候補ごとに必須ルールを検証する（CPU を使う）ので、求解と同じ heavy の枠で数える
+    assert guard.is_heavy("POST", "/api/v1/rank-candidates") and not guard.is_ai("POST", "/api/v1/rank-candidates")
+
+
+def test_impossible_dates_are_422_not_500(client):
+    assert client.post("/api/v1/rank-candidates", json=body(date="2026-02-30")).status_code == 422
+    assert client.post("/api/v1/rank-candidates", json=body(discovered_at="2026-13-40 99:99")).status_code == 422

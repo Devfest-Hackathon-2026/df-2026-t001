@@ -1,7 +1,10 @@
 FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
-RUN pip install pandas numpy scikit-learn xgboost pydantic pyarrow db-dtypes \
-    google-cloud-bigquery google-cloud-storage google-cloud-aiplatform "kfp>=2.7"
+# 版は solver-api/.venv で動作確認したものに固定（requirements.txt / requirements-dev.txt と同じ）。
+# kfp・aiplatform・pyarrow・db-dtypes は手元の venv に無いため、下限だけ（手元で確かめた版が無い。ビルド後に pip freeze で確認して固定する）
+RUN pip install pandas==3.1.1 numpy==2.5.4 scikit-learn==1.9.1 xgboost==3.4.1 joblib==1.6.0 pydantic==2.14.3 \
+    google-cloud-bigquery==3.47.0 google-cloud-storage==3.17.1 \
+    "pyarrow>=15" "db-dtypes>=1.2" "google-cloud-aiplatform>=1.60" "kfp>=2.7"
 WORKDIR /srv
 # 学習・反復検出に必要な部分だけ（ソルバーや API は含めない）
 COPY care/__init__.py care/dsl.py care/vocab.py ./care/

@@ -11,8 +11,8 @@ from datetime import date, datetime, timedelta, timezone
 
 from pydantic import TypeAdapter
 
-from .dsl import (ALL_KINDS, OFF, Facility, Month, MonthlyRule, Origin, PeopleSel, DaySel, Request, ShiftSel, StaffMember,
-                  TaskRequest, TaskTemplate)
+from .dsl import (ALL_KINDS, OFF, WORK_SHIFTS, AnyRule, Balance, Count, Facility, Month, MonthlyRule, Origin, PeopleSel, DaySel, Request, ShiftSel, StaffMember,
+                  Staffing, Succession, TaskRequest, TaskTemplate)
 from .solver.coverage import slot_label
 from .solver.daily import on_duty, solve_daily
 from .solver.explain import explain_daily, explain_monthly
@@ -24,6 +24,20 @@ from .store import Conflict, NotFound
 from .verify import verify_monthly
 
 _RULES = TypeAdapter(MonthlyRule)
+_ANY_RULE = TypeAdapter(AnyRule)          # POST /rules は月次5型 + 日次（taskRequest）を受ける
+OPEN_STATES = {"open", "offering"}        # 欠員の状態: open/offering → filled | replanned（終端）
+MAX_USER_RULES = 60                       # 施設ごとの、初期ルール以外のルールの上限（公開 API の乱用対策）
+CARRY_KINDS = ("absence", "vacancy_cover", "replan")   # 新しい solve に引き継ぐ手修正の種類
+
+
+def parse_date(s: str) -> date:
+    """YYYY-MM-DD を暦として検証する（2026-02-30 や 2026-11-ab は 400）。"""
+    try:
+        if len(s) != 10:
+            raise ValueError(s)
+        return date.fromisoformat(s)
+    except (ValueError, TypeError) as e:
+        raise ServiceError(400, f"日付は実在する YYYY-MM-DD で指定してください: {s}") from e
 
 
 class ServiceError(Exception):
@@ -61,7 +75,9 @@ class Events:
 
     def emit(self, facility_id: str, event_type: str, payload: dict, vacancy_id: str | None = None) -> dict:
         ev = {"event_id": str(uuid.uuid4()), "event_type": event_type, "vacancy_id": vacancy_id, "facility_id": facility_id,
-              "ts": time.time(), "payload": json.dumps(payload, ensure_ascii=False)}
+              "ts": time.time(), "payload": json.dumps(payload, ensure_ascii=False),
+              # 出どころの印。公開デモ（認証なし）は public_api。学習は既定でこれを使わない（learn/steps.py の live_sources）
+              "source": os.getenv("EVENT_SOURCE", "public_api")}
         self.local = (self.local + [ev])[-500:]
         if self.topic:
             try:
@@ -108,7 +124,18 @@ class Svc:
                 monthly.append(Request(id=f"req-{sid}", label=f"{sid} の希望休（{len(days)}日）", strength="強く",
                                        origin=Origin(kind="手入力"), people=PeopleSel(ids=[sid]), days=DaySel(dates=sorted(days)),
                                        shifts=ShiftSel(ids=[OFF]), want=True))
-        return [r for r in monthly if not r.lifecycle.stopped], [r for r in daily if not r.lifecycle.stopped], bad
+        first = None
+        if month:
+            try:
+                first = date(*map(int, month.split("-")), 1)
+            except (ValueError, TypeError):
+                first = None
+
+        def live(r) -> bool:          # 停止していない・月の初日より前に期限切れでない（月の途中の期限はソルバーが日ごとに見る）
+            lc = r.lifecycle
+            return not lc.stopped and (first is None or lc.expires_on is None or lc.expires_on >= first)
+
+        return [r for r in monthly if live(r)], [r for r in daily if live(r)], bad
 
     def roster(self, fid: str, month: str) -> dict:
         """現状の表 = 最新の提案 + その提案に対する手修正。表を上書き保存する経路は無い。"""
@@ -138,17 +165,48 @@ class Svc:
         return {sid: row[-1] for sid, row in prev["cells"].items() if row and row[-1]}
 
     # ------------------------------------------------------------ 求解
+    def _carried(self, fid: str, month: str) -> tuple[dict[str, dict[int, str]], list[dict]]:
+        """今の表の手修正のうち、新しい solve に引き継ぐもの（欠勤・補充・組み直し）を固定セルにする。
+
+        方針: 手修正は提案 ID に結びついているので、新しい提案を作ると消えてしまう。そこで欠勤（休）・補充・組み直しで
+        変えたセルを、新しい提案の「固定セル」（fixed）としてソルバーに渡す。新しい提案の表そのものがそれらを含むので、
+        編集を付け替えなくても『欠勤した人は休み・受諾した人はその勤務』のまま整合する。固定で解けなければ保存しない。
+        """
+        try:
+            ro = self.roster(fid, month)
+        except ServiceError:
+            return {}, []
+        last: dict[tuple[str, int], dict] = {}
+        for e in ro["edits"]:
+            if e.get("kind") in CARRY_KINDS:
+                last[e["staff_id"], e["day"]] = e
+        fixed: dict[str, dict[int, str]] = {}
+        for (sid, d), e in last.items():
+            if sid in ro["cells"]:
+                fixed.setdefault(sid, {})[d] = ro["cells"][sid][d - 1] or OFF
+        return fixed, list(last.values())
+
     def solve(self, fid: str, month: str, *, time_limit: float = 15.0, with_daily: bool = True) -> dict:
+        """新しい提案を作る。今の表の欠勤・補充・組み直しは固定セルとして引き継ぐ（_carried）。
+        まだ埋まっていない欠員（open/offering）は、新しい提案が絶対のルール（必要人数）を満たした時点で埋まっているので
+        replanned（route=solve）にして、古い打診の受諾で人数が過剰にならないようにする。"""
         fac, mo = self.facility(fid), month_obj(month)
         rules, drules, bad = self.rules(fid, month)
         ci = self.carry_in(fid, month)
+        fixed, carried = self._carried(fid, month)
+        known = {s.staff_id: s for s in fac.staff}
+        fixed = {sid: {d: k for d, k in row.items() if 1 <= d <= mo.days and (k == OFF or k in known[sid].shifts)}
+                 for sid, row in fixed.items() if sid in known}
+        fixed = {sid: row for sid, row in fixed.items() if row} or None
         if with_daily:
-            r = solve_integrated(fac, mo, rules, carry_in=ci, daily_rules=drules, monthly_time=time_limit, daily_time=1.0, budget=40.0, max_iter=2)
+            r = solve_integrated(fac, mo, rules, carry_in=ci, daily_rules=drules, monthly_time=time_limit, daily_time=1.0, budget=40.0,
+                                 max_iter=2, fixed=fixed)
             m, daily = r.monthly, r.daily
         else:
-            m, daily, r = solve_monthly(fac, mo, rules, carry_in=ci, time_limit=time_limit, workers=DEFAULT_WORKERS), {}, None
+            m, daily, r = solve_monthly(fac, mo, rules, carry_in=ci, fixed=fixed, time_limit=time_limit, workers=DEFAULT_WORKERS), {}, None
         out = {"facility_id": fid, "month": month, "status": m.status, "wall_ms": r.wall_ms if r else m.wall_ms,
-               "explanation": explain_monthly(m), "warnings": [f"読み込めなかったルール: {', '.join(bad)}"] if bad else []}
+               "explanation": explain_monthly(m), "warnings": [f"読み込めなかったルール: {', '.join(bad)}"] if bad else [],
+               "carried_edits": len(carried)}
         if m.status not in ("OPTIMAL", "FEASIBLE"):
             out["relaxation"] = [{"rule_id": b.rule_id, "label": b.label, "count": b.count, "detail": b.detail} for b in m.relaxation]
             return out          # 解けなかった表は保存しない
@@ -161,6 +219,10 @@ class Svc:
                "soft_broken": out["soft_broken"], "unmet_total": out.get("unmet_total"), "wall_ms": out["wall_ms"]}
         self.repo.add_proposal(fid, doc)
         out["proposal_id"] = pid
+        for v in self.repo.vacancies(fid, month):
+            if v.get("state") in OPEN_STATES and self.repo.transition_vacancy(
+                    fid, v["vacancy_id"], OPEN_STATES, {"state": "replanned", "filled_at": now(), "resolved_by": pid}):
+                self.events.emit(fid, "vacancy_filled", {"by": None, "route": "solve", "proposal_id": pid}, v["vacancy_id"])
         self.events.emit(fid, "roster_proposed", {"month": month, "proposal_id": pid, "status": m.status, "wall_ms": out["wall_ms"]})
         return out
 
@@ -176,11 +238,11 @@ class Svc:
 
     def daily(self, fid: str, day: str, *, time_limit: float = 5.0) -> dict:
         month = day[:7]
-        fac, ro = self.facility(fid), self.roster(fid, month)
         try:
-            d = int(day[8:10])
+            d = int(day[8:10]) if len(day) == 10 and day[4] == "-" and day[7] == "-" else int("x")
         except ValueError as e:
             raise ServiceError(400, f"date は YYYY-MM-DD: {day}") from e
+        fac, ro = self.facility(fid), self.roster(fid, month)
         if not 1 <= d <= ro["month"].days:
             raise ServiceError(400, f"{month} に {d} 日はありません")
         _, drules, _ = self.rules(fid, month, include_requests=False)
@@ -215,7 +277,10 @@ class Svc:
         doc = {"edit_id": f"EDIT-{datetime.now(timezone.utc):%Y%m%d%H%M%S%f}-{uuid.uuid4().hex[:6]}", "facility_id": fid, "month": month,
                "proposal_id": ro["proposal_id"], "staff_id": staff_id, "day": day, "weekday": (ro["month"].first_weekday + day - 1) % 7,
                "from_shift": frm, "to_shift": to, "kind": kind, "reason": reason, "edited_at": now(), "synthetic": False}
-        self.repo.add_edit(fid, doc)
+        try:
+            self.repo.add_edit(fid, doc)
+        except Conflict as e:
+            raise ServiceError(409, "編集 ID が重複しました。もう一度実行してください") from e
         self.events.emit(fid, "roster_edit", {k: doc[k] for k in ("staff_id", "month", "day", "from_shift", "to_shift", "kind")})
         if not check:
             return {"edit": doc}
@@ -237,12 +302,9 @@ class Svc:
             if vac.get("need_skills") and not set(vac["need_skills"]) <= set(s.skills):
                 excluded.append({"staff_id": sid, "name": s.name, "reason": "必要な資格がない"})
                 continue
-            hypo = {**cells, sid: [*cells[sid][: day - 1], shift, *cells[sid][day:]]}
-            v = verify_monthly(fac, mo, hypo, rules, ci)
-            worse = {k: n - base.get(k, 0) for k, n in v.items() if n > base.get(k, 0)}
-            hard = [k for k in worse if k in by and by[k].strength == "絶対"]
+            worse, hard = self._worse(fac, mo, cells, rules, ci, sid, day, shift, base)
             if hard:
-                excluded.append({"staff_id": sid, "name": s.name, "reason": f"「{by[hard[0]].label}」を破る"})
+                excluded.append({"staff_id": sid, "name": s.name, "reason": f"「{hard}」を破る"})
                 continue
             hours = sum(WORK_H[x] for x in cells[sid] if x)
             reasons = []
@@ -256,6 +318,43 @@ class Svc:
             ok.append({"staff_id": sid, "name": s.name, "score": round(score, 3), "reasons": reasons,
                        "accept_probability": None})      # 受諾確率は Vertex AI の予測（P5）が入る
         return self._apply_model(fac, ro, vac, ok), excluded[:5]
+
+    @staticmethod
+    def _worse(fac: Facility, mo: Month, cells: dict, rules: list, ci: dict, sid: str, day: int, shift: str,
+               base: dict | None = None) -> tuple[dict[str, int], str | None]:
+        """sid が day 日に shift を引き受けた仮の表で、新しく破れるルール（rule_id -> 増分）と、破れる絶対ルールの名前。"""
+        by = {r.id: r for r in rules}
+        base = verify_monthly(fac, mo, cells, rules, ci) if base is None else base
+        hypo = {**cells, sid: [*cells[sid][: day - 1], shift, *cells[sid][day:]]}
+        v = verify_monthly(fac, mo, hypo, rules, ci)
+        worse = {k: n - base.get(k, 0) for k, n in v.items() if n > base.get(k, 0)}
+        hard = [k for k in worse if (k in by and by[k].strength == "絶対") or k in ("allowed-shift", "carry-in")]
+        return worse, (by[hard[0]].label if hard and hard[0] in by else ("入れる勤務区分ではない" if hard and hard[0] == "allowed-shift"
+                                                                    else ("前月末からの引き継ぎ（夜勤明け・遅番→早番）" if hard else None)))
+
+    def _can_cover(self, fid: str, vac: dict, staff_id: str) -> None:
+        """その人がこの欠員を引き受けられるか。だめなら 409（欠勤した本人・当日すでに勤務・入れない勤務・資格・絶対のルール）。"""
+        fac, month = self.facility(fid), vac["date"][:7]
+        s = next((x for x in fac.staff if x.staff_id == staff_id), None)
+        if s is None:
+            raise ServiceError(404, f"従業員が見つかりません: {staff_id}")
+        if staff_id == vac["absent_staff_id"]:
+            raise ServiceError(409, "欠勤した本人には打診できません")
+        ro = self.roster(fid, month)
+        day = int(vac["date"][8:10])
+        cur = ro["cells"].get(staff_id)
+        if cur is None:
+            raise ServiceError(404, f"従業員が見つかりません: {staff_id}")
+        if cur[day - 1]:
+            raise ServiceError(409, f"{s.name} さんは {vac['date']} にすでに{cur[day - 1]}が入っています")
+        if vac["shift"] not in s.shifts:
+            raise ServiceError(409, f"{s.name} さんは{vac['shift']}に入れません")
+        if vac.get("need_skills") and not set(vac["need_skills"]) <= set(s.skills):
+            raise ServiceError(409, f"{s.name} さんには必要な資格がありません")
+        rules, _, _ = self.rules(fid, month)
+        _, hard = self._worse(fac, ro["month"], ro["cells"], rules, self.carry_in(fid, month), staff_id, day, vac["shift"])
+        if hard:
+            raise ServiceError(409, f"{s.name} さんが引き受けると「{hard}」を破るため、この欠員には入れられません")
 
     JA = {"log_lead": "依頼までの余裕", "is_night": "夜勤の依頼", "is_early": "早番の依頼", "is_late": "遅番の依頼", "same_unit": "同じユニット",
           "skill_match": "必要な資格", "consec_excess": "連勤が続いていること", "hours_dev": "今月の勤務時間", "nights_last30": "最近の夜勤の多さ",
@@ -307,15 +406,15 @@ class Svc:
 
     def create_vacancy(self, fid: str, date_s: str, shift: str, absent_staff_id: str, *, reason: str | None = None,
                        need_skills: list[str] | None = None, discovered_at: str | None = None) -> dict:
+        parse_date(date_s)
         fac, month = self.facility(fid), date_s[:7]
         ro = self.roster(fid, month)
         day = int(date_s[8:10])
         if absent_staff_id not in ro["cells"] or ro["cells"][absent_staff_id][day - 1] != shift:
             raise ServiceError(409, f"{absent_staff_id} は {date_s} に {shift} に入っていません")
         absent = next(s for s in fac.staff if s.staff_id == absent_staff_id)
-        n = self.repo.vacancy_count(fid, date_s) + 1
-        vid = f"VAC-{date_s.replace('-', '')}-{fid.split('-')[-1][:3].upper()}{n:02d}"
-        self.add_edit(fid, month, absent_staff_id, day, "", kind="absence", reason=reason or "欠勤", check=False)
+        # ID は乱数（件数+1 は同時実行で衝突する）。欠員を先に作り、欠勤の編集が失敗したら欠員を取り消す（孤児の欠勤を残さない）
+        vid = f"VAC-{date_s.replace('-', '')}-{fid.split('-')[-1][:3].upper()}{uuid.uuid4().hex[:6].upper()}"
         doc = {"vacancy_id": vid, "facility_id": fid, "date": date_s, "shift": shift, "unit_id": absent.home_unit,
                "need_skills": need_skills or [], "reason": reason or "欠勤", "absent_staff_id": absent_staff_id, "state": "open",
                "created_at": now(), "discovered_at": discovered_at or now(), "filled_by": None, "filled_at": None}
@@ -323,6 +422,11 @@ class Svc:
             self.repo.add_vacancy(fid, doc)
         except Conflict as e:
             raise ServiceError(409, "欠員 ID が重複しました。もう一度実行してください") from e
+        try:
+            self.add_edit(fid, month, absent_staff_id, day, "", kind="absence", reason=reason or "欠勤", check=False)
+        except Exception:
+            self.repo.update_vacancy(fid, vid, {"state": "cancelled"})
+            raise
         self.events.emit(fid, "vacancy_created", {k: doc[k] for k in ("date", "shift", "unit_id", "reason", "absent_staff_id")}, vid)
         return {"vacancy": doc, **self.candidates(fid, vid)}
 
@@ -338,19 +442,22 @@ class Svc:
 
     def offer(self, fid: str, vid: str, staff_id: str) -> dict:
         vac = self._vac(fid, vid)
-        if vac["state"] == "filled":
-            raise ServiceError(409, "この欠員はすでに充足しています")
-        if staff_id not in {s.staff_id for s in self.facility(fid).staff}:
-            raise ServiceError(404, f"従業員が見つかりません: {staff_id}")
+        self._open(vac)
+        self._can_cover(fid, vac, staff_id)          # 欠勤した本人・当日勤務あり・絶対のルールを破る人には打診しない
         existing = self.repo.offers(fid, vid)
         if any(o["staff_id"] == staff_id and o["status"] == "pending" for o in existing):
             raise ServiceError(409, "その人にはすでに打診中です")
         fac = self.facility(fid)
         feats = self.offer_features(fid, fac, self.roster(fid, vac["date"][:7]), vac, staff_id)     # 打診の時点の特徴量（学習に使う）
-        doc = {"offer_id": f"OFF-{vid}-{len(existing) + 1}", "vacancy_id": vid, "facility_id": fid, "staff_id": staff_id,
+        doc = {"offer_id": f"OFF-{vid}-{uuid.uuid4().hex[:8]}", "vacancy_id": vid, "facility_id": fid, "staff_id": staff_id,
                "rank": len(existing) + 1, "status": "pending", "offered_at": now(), "responded_at": None, "features": feats}
-        self.repo.add_offer(fid, vid, doc)
-        self.repo.update_vacancy(fid, vid, {"state": "offering"})
+        try:
+            self.repo.add_offer(fid, vid, doc)
+        except Conflict as e:
+            raise ServiceError(409, "打診 ID が重複しました。もう一度実行してください") from e
+        if not self.repo.transition_vacancy(fid, vid, OPEN_STATES, {"state": "offering"}):
+            self.repo.update_offer(fid, vid, doc["offer_id"], {"status": "expired", "responded_at": now()})
+            raise ServiceError(409, "この欠員はすでに埋まっています")
         self.events.emit(fid, "offer_sent", {"staff_id": staff_id, "rank": doc["rank"], "features": feats}, vid)
         return doc
 
@@ -363,12 +470,24 @@ class Svc:
         if off["status"] != "pending":
             raise ServiceError(409, f"この打診はすでに{off['status']}です")
         if status == "accepted":
-            if vac["state"] == "filled":
-                raise ServiceError(409, "この欠員はすでに充足しています")
-            self.add_edit(fid, vac["date"][:7], off["staff_id"], int(vac["date"][8:10]), vac["shift"], kind="vacancy_cover",
-                          reason=f"{vid} の補充", check=False)
-            self.repo.update_vacancy(fid, vid, {"state": "filled", "filled_by": off["staff_id"], "filled_at": now()})
-        self.repo.update_offer(fid, vid, oid, {"status": status, "responded_at": now()})
+            self._open(vac)
+            self._can_cover(fid, vac, off["staff_id"])        # 受諾の時点でもう一度ルールを確かめる（打診のあとに表が変わることがある）
+            # 状態の比較つき更新（原子的）。同時に2件の受諾が来ても、通るのは1件だけ
+            prev = self.repo.transition_vacancy(fid, vid, OPEN_STATES, {"state": "filled", "filled_by": off["staff_id"], "filled_at": now()})
+            if prev is None:
+                raise ServiceError(409, "この欠員はすでに埋まっています")
+            if not self.repo.transition_offer(fid, vid, oid, {"pending"}, {"status": status, "responded_at": now()}):
+                self.repo.update_vacancy(fid, vid, {"state": prev["state"], "filled_by": None, "filled_at": None})
+                raise ServiceError(409, "この打診はすでに回答済みです")
+            try:
+                self.add_edit(fid, vac["date"][:7], off["staff_id"], int(vac["date"][8:10]), vac["shift"], kind="vacancy_cover",
+                              reason=f"{vid} の補充", check=False)
+            except Exception:
+                self.repo.update_vacancy(fid, vid, {"state": prev["state"], "filled_by": None, "filled_at": None})
+                self.repo.update_offer(fid, vid, oid, {"status": "pending", "responded_at": None})
+                raise
+        elif not self.repo.transition_offer(fid, vid, oid, {"pending"}, {"status": status, "responded_at": now()}):
+            raise ServiceError(409, "この打診はすでに回答済みです")
         self.events.emit(fid, "offer_responded", {"staff_id": off["staff_id"], "status": status}, vid)
         if status == "accepted":
             self.events.emit(fid, "vacancy_filled", {"by": off["staff_id"], "route": "offer"}, vid)
@@ -377,6 +496,7 @@ class Svc:
     def replan(self, fid: str, vid: str, *, apply: bool = False, time_limit: float = 10.0) -> dict:
         """欠員の日から先だけを、最小変更で組み直す案を作る。apply=True で編集ログに追記する。"""
         vac = self._vac(fid, vid)
+        self._open(vac)
         month, day = vac["date"][:7], int(vac["date"][8:10])
         fac, ro = self.facility(fid), self.roster(fid, month)
         rules, _, _ = self.rules(fid, month)
@@ -393,12 +513,19 @@ class Svc:
                    for sid in cells for d in range(1, ro["month"].days + 1) if cells[sid][d - 1] != r.cells[sid][d - 1]]
         out.update(changes=changes, changed_cells=len(changes))
         if apply:
+            if not self.repo.transition_vacancy(fid, vid, OPEN_STATES, {"state": "replanned", "filled_at": now()}):
+                raise ServiceError(409, "この欠員はすでに埋まっています")
             for c in changes:
                 self.add_edit(fid, month, c["staff_id"], c["day"], c["to"], kind="replan", reason=f"{vid} の組み直し", check=False)
-            self.repo.update_vacancy(fid, vid, {"state": "replanned", "filled_at": now()})
             self.events.emit(fid, "vacancy_filled", {"by": None, "route": "replan", "changed_cells": len(changes)}, vid)
             out["applied"] = True
         return out
+
+    @staticmethod
+    def _open(vac: dict) -> None:
+        if vac.get("state") not in OPEN_STATES:
+            st = {"filled": "すでに充足しています", "replanned": "すでに組み直しで埋まっています"}.get(vac.get("state"), f"受け付けられない状態です（{vac.get('state')}）")
+            raise ServiceError(409, f"この欠員は{st}")
 
     def _vac(self, fid: str, vid: str) -> dict:
         try:
@@ -446,8 +573,6 @@ class Svc:
                     "question": f"{choices[0]['rule']['label']}、というルールにしますか？", "choices": choices,
                     "repeated": c.get("months_repeated") or c.get("days_repeated"), "edit_ids": c["edit_ids"]}
             if cur and c["kind"] == "roster":
-                from pydantic import TypeAdapter
-
                 rule = _RULES.validate_python(choices[0]["rule"])
                 item["impact"] = {"broken_now": sum(verify_monthly(fac, cur["month"], cur["cells"], [rule], ci).values())}
             out.append(item)
@@ -459,14 +584,67 @@ class Svc:
         return {"key": key, "dismissed": True}
 
     # ------------------------------------------------------------ ルール
+    @staticmethod
+    def check_rule_values(rule, fac: Facility) -> None:
+        """値の範囲を確かめる（公開 API から、どの solve も解けなくなるルールを入れられないように）。だめなら 422。"""
+        def bad(msg: str):
+            raise ServiceError(422, f"ルールの値が範囲外です（{rule.id}）: {msg}")
+
+        if not rule.id or len(rule.id) > 80 or not rule.label or len(rule.label) > 200:
+            bad("id は1〜80文字、label は1〜200文字")
+        days = getattr(rule, "days", None)
+        if days is not None:
+            if days.dates is not None and (len(days.dates) > 31 or any(not 1 <= d <= 31 for d in days.dates)):
+                bad("dates は 1〜31 日")
+            if days.weekdays is not None and any(not 0 <= w <= 6 for w in days.weekdays):
+                bad("weekdays は 0〜6")
+        n_staff = len(fac.staff)
+        lo, hi = getattr(rule, "at_least", None), getattr(rule, "at_most", None)
+        if lo is not None and hi is not None and lo > hi:
+            bad("at_least が at_most より大きい")
+        if isinstance(rule, Staffing):
+            for v in (lo, hi):
+                if v is not None and not 0 <= v <= n_staff:
+                    bad(f"人数は 0〜{n_staff}（施設の職員数）")
+            if lo and rule.strength == "絶対":
+                kinds = set(rule.shifts.kinds())
+                able = sum(1 for p in fac.staff if rule.people.match(p) and (OFF in kinds or kinds & set(p.shifts)))
+                if lo > able:
+                    bad(f"その勤務に入れる対象の職員は {able} 人しかいません")
+        elif isinstance(rule, Count):
+            cap = 31 if rule.unit == "回" else 31 * 13
+            for v in (lo, hi):
+                if v is not None and not 0 <= v <= cap:
+                    bad(f"{rule.unit}数は 0〜{cap}")
+        elif isinstance(rule, Succession):
+            if rule.max_run is not None and not 1 <= rule.max_run <= 31:
+                bad("max_run は 1〜31")
+            if rule.pattern is not None and not 1 <= len(rule.pattern) <= 7:
+                bad("pattern は 1〜7 日")
+        elif isinstance(rule, Balance):
+            if not 0 <= rule.max_spread <= 31:
+                bad("max_spread は 0〜31")
+        elif isinstance(rule, TaskRequest):
+            if not rule.task or len(rule.task) > 40:
+                bad("task は1〜40文字")
+            if not 0 <= rule.from_hour < rule.to_hour <= 24:
+                bad("時間帯は 0 ≦ from_hour < to_hour ≦ 24")
+
     def add_rule(self, fid: str, rule_dict: dict) -> dict:
+        """月次の5型と日次の taskRequest を保存する（taskRequest は日次の求解で使われる）。"""
         try:
-            rule = _RULES.validate_python(rule_dict)
+            rule = _ANY_RULE.validate_python(rule_dict)
         except Exception as e:  # noqa: BLE001
             raise ServiceError(422, f"ルールの形が不正です: {str(e)[:300]}") from e
         if rule.origin.kind == "手入力" and not rule.origin.evidence:
             rule.origin.evidence = "API から追加"
-        self.facility(fid)
+        fac = self.facility(fid)
+        self.check_rule_values(rule, fac)
+        from .defaults import default_rules
+
+        defaults = {r.id for r in default_rules(fac)}
+        if sum(1 for r in self.repo.rules(fid) if r.get("id") not in defaults) >= MAX_USER_RULES:
+            raise ServiceError(409, f"追加できるルールは {MAX_USER_RULES} 件までです。不要なルールを止めてから追加してください")
         try:
             self.repo.add_rule(fid, rule.model_dump(mode="json"))
         except Conflict as e:
@@ -474,6 +652,11 @@ class Svc:
         return rule.model_dump(mode="json")
 
     def stop_rule(self, fid: str, rid: str, reason: str) -> dict:
+        cur = next((r for r in self.repo.rules(fid) if r.get("id") == rid), None)
+        if cur is None:
+            raise ServiceError(404, f"ルールが見つかりません: {rid}")
+        if cur.get("locked"):
+            raise ServiceError(409, f"「{cur.get('label', rid)}」は固定のルール（施設の基準）なので止められません")
         try:
             self.repo.stop_rule(fid, rid, {"event_id": f"RE-{uuid.uuid4().hex[:10]}", "rule_id": rid, "event": "stopped", "reason": reason, "at": now()})
         except NotFound as e:

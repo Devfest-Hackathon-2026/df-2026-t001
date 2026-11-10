@@ -75,7 +75,7 @@ export function generateRoster(o: GenOpts): Assignment[] {
   for (const h of o.history ?? []) { if (h.status === 'absent') continue; (worked.get(h.date) ?? worked.set(h.date, new Set()).get(h.date)!).add(h.staffId); if (h.shift === '夜勤') (night.get(h.date) ?? night.set(h.date, new Set()).get(h.date)!).add(h.staffId); }
   const hasAvail = (id: string, d: string) => !!o.avail?.[id]?.some((x) => x.date === d);
   const recent = (id: string, d: string, days: number) => { let c = 0; for (let i = 1; i <= days; i++) if (worked.get(addDays(d, -i))?.has(id)) c++; return c; };
-  const consec = (id: string, d: string) => { let c = 0; for (let i = 1; i <= 6; i++) { if (worked.get(addDays(d, -i))?.has(id) || night.get(addDays(d, -i + 1))?.has(id) && false) c++; else break; } return c; };
+  const consec = (id: string, d: string) => { let c = 0; for (let i = 1; i <= 6; i++) { if (worked.get(addDays(d, -i))?.has(id)) c++; else break; } return c; };
   const available = (s: Staff, d: string, shift: ShiftCode) => {
     if (worked.get(d)?.has(s.id)) return false;
     if (o.dayOff?.[s.id]?.includes(d)) return false; // 希望休
@@ -124,10 +124,6 @@ export function generateRoster(o: GenOpts): Assignment[] {
     }
   }
   return out;
-}
-
-export function activeAssignments(all: Assignment[], date: string) {
-  return all.filter((a) => a.date === date);
 }
 
 /** 欠員枠（割当なし or 欠勤）を列挙 */
@@ -328,11 +324,15 @@ function laborBlock(all: Assignment[], s: Staff, date: string, shift: ShiftCode)
   const has = (d: string) => mine.some((a) => a.date === d) || mine.some((a) => a.shift === '夜勤' && addDays(a.date, 1) === d);
   let before = 0; for (let i = 1; i <= 6; i++) { if (has(addDays(date, -i))) before++; else break; }
   let after = 0; for (let i = 1; i <= 6; i++) { if (has(addDays(date, i))) after++; else break; }
-  if (before + after + 1 > 5) return `${before + after + 1}連勤になる`;
-  const prev = mine.find((a) => a.date === addDays(date, -1) && a.shift !== '夜勤');
-  if (prev) { const gap = (1440 + SHIFTS[shift].start - SHIFTS[prev.shift].end) / 60; if (gap < 11) return `前日${prev.shift}との間隔が${gap}時間（11時間未満）`; }
+  const run = before + after + 1 + (shift === '夜勤' && !has(addDays(date, 1)) ? 1 : 0); // 夜勤は明けの日も勤務日として数える（feCheck と同じ）
+  if (run > 5) return `${run}連勤になる`;
+  // 夜勤明けの日は休み（生成 generateRoster・組み直しの確認 apireplan.feCheck と同じ基準）
+  if (mine.some((a) => a.date === addDays(date, -1) && a.shift === '夜勤')) return '前日夜勤のため夜勤明け';
   const next = mine.find((a) => a.date === addDays(date, 1));
-  if (next && shift !== '夜勤') { const gap = (1440 + SHIFTS[next.shift].start - SHIFTS[shift].end) / 60; if (gap < 11) return `翌日${next.shift}との間隔が${gap}時間（11時間未満）`; }
+  if (shift === '夜勤' && next) return `翌日（夜勤明けの日）に${next.shift}あり`;
+  const prev = mine.find((a) => a.date === addDays(date, -1));
+  if (prev) { const gap = (1440 + SHIFTS[shift].start - SHIFTS[prev.shift].end) / 60; if (gap < 11) return `前日${prev.shift}との間隔が${gap}時間（11時間未満）`; }
+  if (next) { const gap = (1440 + SHIFTS[next.shift].start - SHIFTS[shift].end) / 60; if (gap < 11) return `翌日${next.shift}との間隔が${gap}時間（11時間未満）`; }
   return undefined;
 }
 
@@ -397,7 +397,7 @@ export function rankCandidates(all: Assignment[], v: Vacancy, hopes: Record<stri
     if (mine.some((a) => a.date === v.date && a.status === 'absent')) blocked = '本人が休みの連絡済み';
     else if (mine.some((a) => a.date === v.date && a.status !== 'absent')) blocked = '当日は別の勤務あり';
     else if (mine.some((a) => a.date === addDays(v.date, -1) && a.shift === '夜勤' && a.status !== 'absent')) blocked = '前日夜勤のため夜勤明け';
-    else if (v.shift === '夜勤' && mine.some((a) => a.date === addDays(v.date, 1) && a.status !== 'absent' && a.shift !== '夜勤')) blocked = '翌日に日中勤務あり（連続で負担大）';
+    else if (v.shift === '夜勤' && mine.some((a) => a.date === addDays(v.date, 1) && a.status !== 'absent')) blocked = '翌日（夜勤明けの日）に勤務あり';
     else if (!canWork(s, v.shift)) blocked = s.leaveBy && v.shift !== '夜勤' ? `退勤上限${s.leaveBy}のため不可` : `${v.shift}は不可`;
     else if (weeklyCount(all, s.id, v.date) >= (s.employment === 'パート' ? 3 : 5)) blocked = '週の勤務上限に達している';
     else if (laborBlock(all, s, v.date, v.shift)) blocked = laborBlock(all, s, v.date, v.shift);

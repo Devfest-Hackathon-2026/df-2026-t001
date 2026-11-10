@@ -1,104 +1,179 @@
+import os
+
+os.environ.setdefault("REQUIRE_AUTH", "0")
+import pytest
 from fastapi.testclient import TestClient
 
-from app import events, rules
+from app import config, events, guard, main
 from app.main import app
 
 c = TestClient(app)
+RESET = {config.RESET_HEADER: config.RESET_HEADER_VALUE}
+
+
+def S(**kw) -> dict:
+    """現行UI（store.ts State）の最小形。"""
+    base = {"v": 8, "today": "2026-11-18", "now": "2026-11-18 14:00", "assignments": [], "vacancies": [], "health": [], "messages": []}
+    base.update(kw)
+    return base
+
+
+@pytest.fixture(autouse=True)
+def _fresh(monkeypatch):
+    monkeypatch.setattr(config, "RESET_COOLDOWN_SEC", 0)
+    monkeypatch.setattr(config, "RESET_PER_IP_PER_HOUR", 1000)
+    guard._reset_hits.clear()
+    guard._write_hits.clear()
+    guard._req_hits.clear()
+    main._hits.clear()
+    c.post("/api/state/reset", headers=RESET)
+    events.clear_local()
+    yield
+
+
+def ver() -> int:
+    return c.get("/api/state").json()["version"]
+
+
+def put(app_state, base=None):
+    return c.put("/api/state", json={"base": ver() if base is None else base, "app": app_state})
 
 
 def test_health():
     assert c.get("/api/healthz").json()["ok"] is True
 
 
-def test_state_patch_merge_and_version_and_304():
-    c.post("/api/state/reset")
-    r = c.put("/api/state", json={"patch": {"flow": {"vacancy": {"id": "VAC-1", "status": "登録"}}}})
-    v1 = r.json()["version"]
-    c.put("/api/state", json={"patch": {"flow": {"vacancy": {"status": "打診中"}}}})
+def test_put_get_version_and_304():
+    v0 = ver()
+    r = put(S(messages=[{"id": "M1", "text": "a < b"}]))
+    assert r.status_code == 200 and r.json()["version"] == v0 + 1
     got = c.get("/api/state").json()
-    assert got["data"]["flow"]["vacancy"] == {"id": "VAC-1", "status": "打診中"}  # deep merge
-    assert got["version"] == v1 + 1
+    assert got["version"] == v0 + 1 and got["data"]["app"]["messages"][0]["text"] == "a < b"
     assert c.get(f"/api/state?since={got['version']}").status_code == 304
 
 
-def test_vacancy_status_event_emitted():
-    c.post("/api/state/reset")
-    c.put("/api/state", json={"patch": {"flow": {"vacancy": {"id": "VAC-2", "status": "登録"}}}})
-    c.put("/api/state", json={"patch": {"flow": {"vacancy": {"status": "充足"}}}})
-    types = [e["event_type"] for e in events.local_events()]
-    assert types.count("vacancy_status_changed") == 2
-    assert c.get("/api/analytics/stats").json()["events_total"] >= 2
+def test_stale_base_is_rejected_with_current_state():
+    v0 = ver()
+    assert put(S(messages=[{"id": "M1", "text": "leader"}]), base=v0).status_code == 200
+    r = put(S(health=[{"id": "H1", "staffId": "E1"}]), base=v0)  # 同じ基準からの2台目の更新
+    assert r.status_code == 409
+    body = r.json()
+    assert body["version"] == v0 + 1 and body["data"]["app"]["messages"][0]["text"] == "leader"
+    # 保存済みの状態は上書きされていない（先の更新が消えない）
+    assert c.get("/api/state").json()["data"]["app"]["messages"][0]["text"] == "leader"
+    # マージ後に最新の基準で再送すると通る
+    assert put(S(messages=[{"id": "M1", "text": "leader"}], health=[{"id": "H1", "staffId": "E1"}]), base=body["version"]).status_code == 200
 
 
-def test_candidates_exclude_absent_and_non_night():
-    cands = rules.rank_candidates(absent_emp_id="EMP-017")
-    ids = [x["empId"] for x in cands]
-    assert "EMP-017" not in ids
-    assert cands[0]["score"] >= cands[-1]["score"]
-    body = c.post("/api/ai/candidates", json={"absentEmpId": "EMP-017"}).json()
-    assert body["source"] == "fallback" and body["fallbackReason"]  # AI未接続を隠さない
-    assert "本人の承諾ではありません" in body["note"]
+def test_put_requires_base():
+    assert c.put("/api/state", json={"app": S()}).status_code == 422
+    assert c.put("/api/state", json={"patch": {"app": S()}}).status_code == 422
 
 
-def test_monthly_plan_fallback_is_valid():
-    body = c.post("/api/ai/monthly-plan", json={"year": 2026, "month": 11}).json()
-    assert body["source"] == "fallback"
-    assert body["problems"] == []
-    assert len(body["plan"]) == 30
+def test_reset_is_single_version_bump_and_requires_header():
+    v0 = ver()
+    assert c.post("/api/state/reset").status_code == 403
+    r = c.post("/api/state/reset", headers=RESET)
+    assert r.status_code == 200 and r.json()["version"] == v0 + 1 == ver()
+    assert c.get("/api/state").json()["data"] == {}
 
 
-def test_validator_catches_violations():
-    plan = rules.greedy_night_plan(2026, 11)
-    plan["2026-11-02"] = plan["2026-11-01"]  # 連続夜勤
-    assert any("連続夜勤" in p for p in rules.validate_night_plan(plan, 2026, 11))
+def test_reset_cooldown_and_ip_limit(monkeypatch):
+    monkeypatch.setattr(config, "RESET_COOLDOWN_SEC", 60)
+    guard._last_reset[0] = 0
+    assert c.post("/api/state/reset", headers=RESET).status_code == 200
+    assert c.post("/api/state/reset", headers=RESET).status_code == 429
+    monkeypatch.setattr(config, "RESET_COOLDOWN_SEC", 0)
+    monkeypatch.setattr(config, "RESET_PER_IP_PER_HOUR", 1)
+    guard._reset_hits.clear()
+    assert c.post("/api/state/reset", headers=RESET).status_code == 200
+    assert c.post("/api/state/reset", headers=RESET).status_code == 429
 
 
-def test_health_insight_never_treats_unsubmitted_as_healthy():
-    body = c.post("/api/ai/health-insight", json={"checks": [{"status": "consult"}, {"status": "normal"}]}).json()
-    assert body["counts"]["consult"] == 1 and body["unsubmittedIsNotHealthy"] is True
-    assert "診断" in body["disclaimer"]
+def test_write_limit_per_ip(monkeypatch):
+    monkeypatch.setattr(config, "WRITE_PER_IP_PER_MIN", 2)
+    assert put(S()).status_code == 200
+    assert put(S()).status_code == 200
+    assert put(S()).status_code == 429
 
 
-def test_chat_validation_and_fallback():
-    assert c.post("/api/ai/chat", json={"message": ""}).status_code == 422
-    assert c.post("/api/ai/chat", json={"message": "今夜の欠員は?"}).json()["source"] == "fallback"
+def test_events_only_for_new_transitions():
+    put(S(vacancies=[{"id": "VAC-1", "state": "open"}]))
+    assert events.local_events() == []  # 初回登録はイベントにしない
+    put(S(vacancies=[{"id": "VAC-1", "state": "offering"}]))
+    put(S(vacancies=[{"id": "VAC-1", "state": "filled"}, {"id": "VAC-2", "state": "open"}]))
+    put(S(vacancies=[{"id": "VAC-1", "state": "filled"}, {"id": "VAC-2", "state": "open"}]))  # 変化なし
+    ev = [(e["event_type"], e["vacancy_id"]) for e in events.local_events()]
+    assert ev == [("vacancy_status_changed", "VAC-1"), ("vacancy_status_changed", "VAC-1"), ("vacancy_created", "VAC-2")]
 
 
-def test_seed_ids_unique():
-    ids = [e["id"] for e in rules.load_seed("employees")]
-    assert len(ids) == len(set(ids))
+def test_stale_repush_emits_nothing():
+    v0 = ver()
+    put(S(vacancies=[{"id": "VAC-1", "state": "offering"}]), base=v0)
+    put(S(vacancies=[{"id": "VAC-1", "state": "filled"}]))
+    events.clear_local()
+    assert put(S(vacancies=[{"id": "VAC-1", "state": "offering"}]), base=v0 + 1).status_code == 409  # 古い状態の再送
+    assert events.local_events() == []
+    assert c.get("/api/state").json()["data"]["app"]["vacancies"][0]["state"] == "filled"
 
 
-def test_state_rejects_markup_and_proto_keys_and_unknown_top():
-    assert c.put("/api/state", json={"patch": {"flow": {"memo": "<img src=x onerror=alert(1)>"}}}).status_code == 422
-    assert c.put("/api/state", json={"patch": {"flow": {"__proto__": {"x": 1}}}}).status_code == 422
-    assert c.put("/api/state", json={"patch": {"admin": {"x": 1}}}).status_code == 422
-    assert c.put("/api/state", json={"patch": {"flow": {"memo": "x" * 400000}}}).status_code in (413, 422)
+def test_health_submitted_from_current_ui():
+    put(S())
+    put(S(health=[{"id": "H9", "staffId": "E1", "temp": 37.8, "symptoms": [], "consult": False}, {"id": "H1", "staffId": "E2", "temp": 36.4, "symptoms": [], "consult": False}]))
+    hs = [e for e in events.local_events() if e["event_type"] == "health_submitted"]
+    assert len(hs) == 2 and '"consult"' in hs[0]["payload"] and '"normal"' in hs[1]["payload"]
+
+
+def test_demo_reset_by_clock_rewind_emits_single_event():
+    put(S(now="2026-11-18 15:30", vacancies=[{"id": "VAC-1", "state": "filled"}]))
+    put(S(now="2026-11-18 14:00", vacancies=[{"id": "VAC-1", "state": "open"}]))
+    assert [e["event_type"] for e in events.local_events()] == ["demo_reset"]
+
+
+def test_schema_validation():
+    assert put({"v": 8}).status_code == 422  # 必須項目なし
+    assert put(S(v="8")).status_code == 422
+    assert put(S(vacancies={"id": "x"})).status_code == 422
+    assert put(S(vacancies=[{"state": "open"}])).status_code == 422  # id なし
+    assert put(S(messages=[{"id": "M", "text": "x" * 6000}])).status_code == 422
+    assert put(S(messages=[{"id": "M", "x": {"__proto__": 1}}])).status_code == 422
+    assert put(S(autopilot=[1])).status_code == 422
+    assert put(S(**{f"k{i}": 1 for i in range(60)})).status_code == 422
+    assert put(S(text="nul\x00")).status_code == 422
+    assert put(S(notices=[{"id": f"N{i}"} for i in range(3001)])).status_code == 422
+
+
+def test_attachments_are_not_stored():
+    put(S(messages=[{"id": "M1", "text": "photo", "attachments": [{"name": "a", "type": "image/png", "url": "data:..."}]}]))
+    assert "attachments" not in c.get("/api/state").json()["data"]["app"]["messages"][0]
+
+
+def test_body_size_limit_content_length_and_chunked(monkeypatch):
+    monkeypatch.setattr(config, "MAX_BODY_BYTES", 1000)
+    big = '{"base":0,"app":{"pad":"' + "x" * 2000 + '"}}'
+    assert c.put("/api/state", content=big, headers={"content-type": "application/json"}).status_code == 413
+
+    def gen():
+        for _ in range(10):
+            yield b"x" * 300
+
+    r = c.put("/api/state", content=gen(), headers={"content-type": "application/json"})
+    assert r.status_code == 413
+    assert put(S()).status_code == 200  # 上限内は通る
+
+
+def test_removed_endpoints():
+    for path in ("/api/ai/chat", "/api/ai/monthly-plan", "/api/ai/health-insight"):
+        assert c.post(path, json={}).status_code in (404, 405)
+    assert c.get("/api/analytics/stats").status_code == 404
+    assert c.get("/api/seed/employees").status_code == 404
 
 
 def test_auth_required_when_enabled(monkeypatch):
-    from app import config
-
     monkeypatch.setattr(config, "REQUIRE_AUTH", True)
     assert c.get("/api/state").status_code == 401
     assert c.get("/api/state", headers={"Authorization": "Bearer bogus"}).status_code == 401
     assert c.get("/api/healthz").status_code == 200  # ヘルスのみ未認証
-
-
-def test_ai_daily_and_per_user_limits(monkeypatch):
-    from app import config, guard
-
-    monkeypatch.setattr(config, "AI_PER_UID_PER_MIN", 2)
-    guard._uid_hits.clear()
-    assert c.post("/api/ai/health-insight", json={"checks": []}).status_code == 200
-    assert c.post("/api/ai/health-insight", json={"checks": []}).status_code == 200
-    assert c.post("/api/ai/health-insight", json={"checks": []}).status_code == 429
-    guard._uid_hits.clear()
-    monkeypatch.setattr(config, "AI_PER_UID_PER_MIN", 100)
-    monkeypatch.setattr(config, "AI_DAILY_LIMIT", 1)
-    guard._mem_daily.clear()
-    assert c.post("/api/ai/health-insight", json={"checks": []}).status_code == 200
-    assert c.post("/api/ai/health-insight", json={"checks": []}).status_code == 429
 
 
 def test_docs_disabled():
@@ -106,47 +181,12 @@ def test_docs_disabled():
 
 
 def test_per_user_request_limit(monkeypatch):
-    from app import config, guard
+    from fastapi import HTTPException
 
     monkeypatch.setattr(config, "REQ_PER_UID_PER_MIN", 2)
     guard._req_hits.clear()
     guard.consume_request("u1")
     guard.consume_request("u1")
-    import pytest
-    from fastapi import HTTPException
-
     with pytest.raises(HTTPException):
         guard.consume_request("u1")
     guard.consume_request("u2")  # 別ユーザーは影響を受けない
-
-
-def test_app_state_replace_and_markup_allowed_in_app_only():
-    c.post("/api/state/reset")
-    assert c.put("/api/state", json={"patch": {"app": {"v": 7, "messages": [{"text": "a < b > c"}], "x": {"keep": 1}}}}).status_code == 200
-    assert c.put("/api/state", json={"patch": {"app": {"v": 7, "messages": []}}}).status_code == 200
-    got = c.get("/api/state").json()["data"]["app"]
-    assert got == {"v": 7, "messages": []}  # 丸ごと置換（削除されたキーも反映）
-    assert c.put("/api/state", json={"patch": {"flow": {"m": "<b>"}}}).status_code == 422  # 旧UIは従来どおり拒否
-    assert c.put("/api/state", json={"patch": {"app": {"__proto__": {}}}}).status_code == 422
-
-
-def test_app_vacancy_events():
-    events.clear_local()
-    c.post("/api/state/reset")
-    c.put("/api/state", json={"patch": {"app": {"vacancies": [{"id": "VAC-1", "state": "open"}]}}})
-    c.put("/api/state", json={"patch": {"app": {"vacancies": [{"id": "VAC-1", "state": "filled"}]}}})
-    ev = [e for e in events.local_events() if e["event_type"] == "vacancy_status_changed"]
-    assert len(ev) == 1
-
-
-def test_explain_candidates_and_plan_review_fallback():
-    body = {"vacancy": {"date": "2026-11-25", "shift": "夜勤"}, "candidates": [{"id": "EMP-005", "name": "渡辺", "score": 90, "reasons": ["当日の勤務なし（空き）"]}]}
-    r = c.post("/api/ai/explain-candidates", json=body).json()
-    assert r["source"] == "fallback" and r["candidates"][0]["id"] == "EMP-005" and "承諾" in r["note"]
-    assert c.post("/api/ai/explain-candidates", json={"vacancy": {"x": "y" * 20000}, "candidates": []}).status_code == 413
-    assert c.post("/api/ai/plan-review", json={"plan": {"notes": ["夜勤が偏っています"]}}).json()["checks"] == ["夜勤が偏っています"]
-
-
-def test_health_insight_new_ui_format():
-    r = c.post("/api/ai/health-insight", json={"checks": [{"staffId": "E1", "temp": 37.4, "symptoms": ["咳"], "sleep": "十分", "consult": True}, {"staffId": "E2", "temp": 36.4, "symptoms": [], "sleep": "十分", "consult": False}]}).json()
-    assert r["counts"]["consult"] == 1 and r["counts"]["normal"] == 1

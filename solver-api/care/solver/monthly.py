@@ -88,9 +88,11 @@ class _Build:
                 self.m.add(self.x[sid, d, k] == 1)
 
         for r in rules:
-            if r.lifecycle.stopped:
+            self._act = [d for d in self.days if month.active(r, d)]     # 期限つきルールは期限の日まで（停止は全日なし）
+            if not self._act:
                 continue
             getattr(self, f"_add_{r.type}")(r)
+        self._act = list(self.days)
         if use_coverage and fac.templates:
             self._add_coverage(fac.templates, boost or {}, boost_skill or {})
 
@@ -126,7 +128,9 @@ class _Build:
         return [s for s in self.staff if sel.match(s)]
 
     def _days(self, sel) -> list[int]:
-        return [d for d in self.days if sel.match(d, self.month.weekday(d))]
+        """日付群のうち、いま組み立て中のルールが効く日（期限内）だけ。"""
+        act = set(getattr(self, "_act", self.days))
+        return [d for d in self.days if d in act and sel.match(d, self.month.weekday(d))]
 
     def _in(self, sid: str, d: int, kinds: list[str]):
         return sum(self.x[sid, d, k] for k in kinds)
@@ -159,6 +163,8 @@ class _Build:
             n = r.max_run
             for p in people:
                 for s in range(1, self.N - n + 1):
+                    if s not in self._act:
+                        continue
                     tot = sum(self._in(p.staff_id, s + i, list(WORK_SHIFTS)) for i in range(n + 1))
                     self._post(r, lambda lit, tot=tot: self._en(self.m.add(tot <= n), lit), f"{p.staff_id} {s}日〜")
             return
@@ -166,6 +172,8 @@ class _Build:
         L = len(pats)
         for p in people:
             for s in range(1, self.N - L + 2):
+                if s not in self._act:
+                    continue
                 tot = sum(self._in(p.staff_id, s + i, ks) for i, ks in enumerate(pats))
                 cond = (tot <= L - 1) if r.forbid else (tot >= L)
                 self._post(r, lambda lit, cond=cond: self._en(self.m.add(cond), lit), f"{p.staff_id} {s}日〜")
@@ -192,7 +200,7 @@ class _Build:
         mx = self.m.new_int_var(0, self.N, f"mx_{r.id}")
         mn = self.m.new_int_var(0, self.N, f"mn_{r.id}")
         for p in people:
-            c = self._count_expr(p.staff_id, kinds, self.days, "回")
+            c = self._count_expr(p.staff_id, kinds, self._act, "回")
             self.m.add(mx >= c)
             self.m.add(mn <= c)
         self._post(r, lambda lit: self._en(self.m.add(mx - mn <= r.max_spread), lit), "")

@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { SkillId, Staff } from '../core/types';
-import { SKILLS, unitName } from '../core/facility';
-import type { Assignment } from '../core/types';
 
 export type View = 'dash' | 'month' | 'day' | 'plan' | 'vac' | 'req' | 'people' | 'labor' | 'collect' | 'health' | 'chat' | 'auto' | 'ai';
 export interface Nav { view: View; date: string; vacId?: string; thread?: string; }
@@ -17,7 +15,6 @@ export const SkillMini = ({ s, max = 4 }: { s: Staff; max?: number }) => {
     </span>
   );
 };
-export const skillLabel = (k: SkillId) => SKILLS[k].label;
 
 export function useWidth() {
   const [w, setW] = useState(typeof window !== 'undefined' ? window.innerWidth : 1280);
@@ -25,7 +22,6 @@ export function useWidth() {
   return w;
 }
 export const useWide = (px = 1100) => useWidth() >= px;
-export const asgText = (a: Assignment) => `${a.shift}／${unitName(a.unitId)}`;
 export const VAC_STATE: Record<string, { label: string; cls: string }> = {
   open: { label: '登録', cls: 'bad' }, offering: { label: '打診中', cls: 'warn' }, posted: { label: '掲載中', cls: 'warn' }, applied: { label: '応募確認', cls: 'pri' }, filled: { label: '充足', cls: 'ok' },
 };

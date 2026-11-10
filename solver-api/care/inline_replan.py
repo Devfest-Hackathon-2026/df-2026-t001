@@ -195,6 +195,16 @@ def _solve(bd: _Build, time_limit: float, workers: int):
 
 
 def replan_inline(b: InlineReplanIn, *, workers: int | None = None) -> dict:
+    """500 を返さない: 入力の矛盾は ServiceError（400）、想定外の例外も 422 にして返す。"""
+    try:
+        return _replan_inline(b, workers=workers)
+    except ServiceError:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise ServiceError(422, f"組み直しの入力を処理できませんでした: {type(e).__name__}") from e
+
+
+def _replan_inline(b: InlineReplanIn, *, workers: int | None = None) -> dict:
     t0 = time.time()
     w = workers or DEFAULT_WORKERS
     fac, mo, rules, carry, base, orig = _prepare(b)

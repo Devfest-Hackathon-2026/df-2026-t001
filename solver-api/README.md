@@ -19,7 +19,7 @@
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python -m pytest -q tests                                  # 157件（Firestore 不要）
+.venv/bin/python -m pytest -q tests                                  # 203件（Firestore 不要）
 STORE=memory SYNTH_DIR=../scripts/synth/out .venv/bin/uvicorn care.server:app --port 8080   # ローカル（メモリ）
 .venv/bin/python -m care.cli --facility fac-sakura --day 12          # 月次＋日次を解いて要約
 python scripts/smoke.py https://care-solver-api-h5p5nqo3qa-an.a.run.app fac-hidamari    # 通し確認（Firestore に追記される）
@@ -32,7 +32,7 @@ python scripts/smoke.py https://care-solver-api-h5p5nqo3qa-an.a.run.app fac-hida
 ## AI（Gemini）
 
 `care/ai/` に、ルール翻訳（`POST …/rules/translate`）・説明の言い換え（`POST …/explain`）・チャット（`POST …/chat`）。
-Vertex AI を ADC で呼ぶ（API キー無し）。入力は仮名化＋ Sensitive Data Protection でマスク。利用上限は全体 300回/日・IP ごと 20回/日。
+Vertex AI を ADC で呼ぶ（API キー無し）。入力は仮名化＋ Sensitive Data Protection でマスク。利用上限は Gemini の呼び出し回数で数え、全体 600回/日・IP ごと 40回/日（チャット 1 回は最大 5 回の呼び出し）。意図の分類・文面の作成・候補の理由は別枠で IP ごと 150回/日・全体 2,000回/日。チャットの履歴・ルール名・職員名も仮名化＋マスクしてから渡し、利用者の文字列は区切りで囲んでデータとして渡す。
 
 ```bash
 .venv/bin/python scripts/eval_ai.py ../scripts/synth/out report.json     # 本物の Gemini で評価（Vertex AI を数十〜百数十回呼ぶ）

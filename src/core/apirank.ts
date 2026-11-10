@@ -18,7 +18,7 @@ const TIMEOUT_MS = 3000;
 const HOURS: Record<ShiftCode, number> = { 早番: 8, 日勤: 8, 遅番: 8, 夜勤: 13 };
 
 export function aiRankEnabled(): boolean {
-  if ((import.meta.env.VITE_AI_RANK as string | undefined) === 'off') return false;
+  if ((import.meta.env?.VITE_AI_RANK as string | undefined) === 'off') return false;
   try { if (localStorage.getItem('care-no-rank') === '1') return false; } catch { /* 読めなくても既定はオン */ }
   return typeof fetch === 'function' && typeof AbortController === 'function';
 }

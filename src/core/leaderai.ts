@@ -1,7 +1,7 @@
 // リーダー向け「シフト作成君」：状況の質問・操作の依頼・シフト作成の依頼を、自然文で受ける（ルールベース。ルールで読み取れない言い回しは、Gemini の分類 aiintent.ts が補う）
 import type { State } from './store';
 import { extractDates } from './shiftmaker';
-import { fmtMD } from './dates';
+import { addDays, fmtMD, monthStart, resolveMonth } from './dates';
 import { rankCandidates } from './roster';
 import { staffById, unitName, SKILLS } from './facility';
 import type { ShiftCode } from './types';
@@ -20,7 +20,7 @@ export function interpretLeader(raw: string, s: State): LeaderReply {
 
   // シフト作成の依頼
   if (/(シフト).*(作|つく|組)/.test(t) || /(作成|作って|作り直)/.test(t) && /シフト/.test(t)) {
-    const mm = t.match(/(\d{1,2})月/); const month = mm ? `${s.today.slice(0, 4)}-${String(+mm[1]).padStart(2, '0')}` : /来月/.test(t) ? '2026-12' : s.collection.month;
+    const mm = t.match(/(\d{1,2})月/); const month = (mm && resolveMonth(s.today, +mm[1])) || (/来月/.test(t) ? addDays(monthStart(s.today), 31).slice(0, 7) : s.collection.month);
     const nm = /(夜勤).*(減ら|少なく|抑え)/.test(t) ? 6 : undefined;
     return { text: `${+month.slice(5)}月のシフトを作ります。希望休（${Object.values(s.collection.submitted).filter(Boolean).length}名が提出済み）、入れる日、行事、労務ルールを反映します。${nm ? `夜勤は1人あたり月${nm}回までにします。` : ''}作成後は、結果を確認・編集してから公開できます。`, action: { kind: 'createPlan', args: { month, nightMax: nm }, label: `${+month.slice(5)}月のシフトを作成する`, detail: nm ? '夜勤を月6回までに抑えて作成します' : '希望休・入れる日・行事を反映して作成します' } };
   }
@@ -56,7 +56,7 @@ export function interpretLeader(raw: string, s: State): LeaderReply {
     return { text: `${fmtMD(v.date)} ${v.shift}（${unitName(v.unitId)}）に入れる人の上位です。${v.needSkills.length ? `必須スキル：${v.needSkills.map((k) => SKILLS[k].label).join('・')}。` : ''}\n${r.map((c, i) => `${i + 1}. ${c.staff.name}さん：${c.reasons.slice(0, 2).join('、')}`).join('\n') || '条件に合う人がいません。求人への切り替えを検討してください。'}`, links: [{ label: '欠員の詳細を開く', target: `vacancy:${v.id}` }] };
   }
   if (/欠員|人手|足りない|不足/.test(t)) {
-    const l = dates.length ? open.filter((v) => dates.includes(v.date)) : /明日/.test(t) ? open.filter((v) => v.date === s.today.replace(/\d+$/, (x) => String(+x + 1).padStart(2, '0'))) : open;
+    const l = dates.length ? open.filter((v) => dates.includes(v.date)) : /明日/.test(t) ? open.filter((v) => v.date === addDays(s.today, 1)) : open;
     if (!l.length) return { text: dates.length || /明日/.test(t) ? '該当の日に欠員はありません。' : '欠員はありません。' };
     return { text: `欠員は${l.length}件です。\n${l.slice(0, 6).map((v) => `・${fmtMD(v.date)} ${v.shift}（${unitName(v.unitId)}）：${v.auto ? { ask: '確認待ち', running: '自動対応中', paused: '一時停止', waiting_adjust: '時間調整の承認待ち', waiting_post: '求人承認待ち', posted: '求人掲載中', manual: '手動', done: '対応済み' }[v.auto.mode] : '未対応'}`).join('\n')}`, links: l.slice(0, 3).map((v) => ({ label: `${fmtMD(v.date)} ${v.shift}を開く`, target: `vacancy:${v.id}` })) };
   }

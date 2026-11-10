@@ -15,6 +15,6 @@ cd infra && terraform init && terraform plan
 # 例: terraform apply -target=google_cloud_run_v2_service.solver
 ```
 
-- 既存の Artifact Registry（`cloud-run-source-deploy`）は管理対象外で、流用している。`nurse-shift`（別メンバーの Cloud Run）には触れない。
+- 既存の Artifact Registry（`cloud-run-source-deploy`）は管理対象外で、流用している。`nurse-shift`（チームの別メンバーが作成した既存の Cloud Run サービス）には触れない。
 - `terraform output` の `wif_provider` と `deployer_sa` は、GitHub の Variables（`WIF_PROVIDER`、`DEPLOYER_SA`）に登録して使う（鍵ファイルなしのデプロイ）。
 - 予算アラートは、課金アカウントの権限がないため Terraform では管理していない（課金は手動で確認している）。

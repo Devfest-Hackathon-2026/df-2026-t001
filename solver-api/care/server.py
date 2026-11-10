@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Literal
 
 from fastapi import FastAPI, Request
@@ -70,17 +71,88 @@ async def protect(req: Request, call_next):
         ok, wait = guard.allow(ip, kind)
         if not ok:
             return JSONResponse({"error": "リクエストが多すぎます。しばらく待ってから再実行してください"}, 429, headers={"Retry-After": str(wait)})
-        if int(req.headers.get("content-length") or 0) > guard.MAX_BODY:
-            return JSONResponse({"error": "リクエストが大きすぎます"}, 413)
     return await call_next(req)
 
 
 # ブラウザ（Firebase Hosting の画面）から直接呼ぶための CORS。protect（レート制限）より後に足し、最も外側にする
 # （429・413 の応答にも CORS ヘッダーが付き、画面が『混み合っています』を読める）。許可するのは、公開サイト・プレビューチャンネル・ローカル開発だけ。
 # 環境変数 CORS_ORIGINS（カンマ区切り）で追加できる。Cookie は使わないので allow_credentials は付けない。
-_ORIGINS = ["https://care.yutok.dev", "https://gdgoc-514203.web.app", "https://gdgoc-514203.firebaseapp.com",
+class _TooLarge(Exception):
+    pass
+
+
+class BodyLimit:
+    """本文の大きさの上限（MAX_BODY）。Content-Length だけでなく、実際に読んだバイト数で数える
+    （chunked の本文で Content-Length を付けずに送られても 413 にする）。"""
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not scope["path"].startswith("/api/v1"):
+            return await self.app(scope, receive, send)
+        limit = guard.MAX_BODY
+        try:
+            declared = int(dict(scope.get("headers") or []).get(b"content-length", b"0") or 0)
+        except ValueError:
+            declared = 0
+        if declared > limit:
+            return await self._reject(send)
+        seen, over, started = 0, False, False
+
+        async def recv():
+            nonlocal seen, over
+            msg = await receive()
+            if msg["type"] == "http.request":
+                seen += len(msg.get("body", b""))
+                if seen > limit:
+                    over = True
+                    raise _TooLarge()
+            return msg
+
+        async def snd(msg):
+            nonlocal started
+            if over:                                  # 上限を超えたあとの応答（400 など）は捨て、413 を返す
+                return
+            if msg["type"] == "http.response.start":
+                started = True
+            await send(msg)
+
+        try:
+            await self.app(scope, recv, snd)
+        except Exception as e:  # noqa: BLE001
+            if not over and not _is_too_large(e):
+                raise
+            over = True
+        if over and not started:
+            await self._reject(send)
+
+    @staticmethod
+    async def _reject(send):
+        body = '{"error":"リクエストが大きすぎます"}'.encode()
+        await send({"type": "http.response.start", "status": 413,
+                    "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]})
+        await send({"type": "http.response.body", "body": body})
+
+
+def _is_too_large(e: BaseException) -> bool:
+    if isinstance(e, _TooLarge):
+        return True
+    if isinstance(e.__cause__, _TooLarge) or isinstance(e.__context__, _TooLarge):
+        return True
+    return any(_is_too_large(x) for x in getattr(e, "exceptions", ()))
+
+
+app.add_middleware(BodyLimit)
+
+# ブラウザ（Firebase Hosting の画面）から直接呼ぶための CORS。protect（レート制限）・BodyLimit より後に足し、最も外側にする
+# （429・413 の応答にも CORS ヘッダーが付き、画面が『混み合っています』を読める）。許可するのは、公開サイト・プレビューチャンネル・ローカル開発だけ。
+# 環境変数 CORS_ORIGINS（カンマ区切り）で追加できる。プロジェクト ID は FIREBASE_PROJECT（既定は今のプロジェクト）で変えられる。
+# Cookie は使わないので allow_credentials は付けない。
+_FB = os.getenv("FIREBASE_PROJECT") or os.getenv("GOOGLE_CLOUD_PROJECT") or "gdgoc-514203"
+_ORIGINS = [*[o for o in os.getenv("CORS_BASE_ORIGINS", "https://care.yutok.dev").split(",") if o], f"https://{_FB}.web.app", f"https://{_FB}.firebaseapp.com",
             "http://localhost:5173", "http://localhost:4173", *[o for o in os.getenv("CORS_ORIGINS", "").split(",") if o]]
-app.add_middleware(CORSMiddleware, allow_origins=_ORIGINS, allow_origin_regex=r"^https://gdgoc-514203--[a-z0-9-]+\.(web\.app|firebaseapp\.com)$",
+app.add_middleware(CORSMiddleware, allow_origins=_ORIGINS, allow_origin_regex=rf"^https://{re.escape(_FB)}--[a-z0-9-]+\.(web\.app|firebaseapp\.com)$",
                    allow_methods=["GET", "POST", "OPTIONS"], allow_headers=["Content-Type"], expose_headers=["Retry-After"], max_age=600)
 
 

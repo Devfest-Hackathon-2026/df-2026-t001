@@ -142,7 +142,10 @@ def train_facility(fid: str, rows: list[dict], *, version: str | None = None, se
         from sklearn.pipeline import Pipeline
 
         sk = Pipeline([("scaler", model[1]), ("lr", model[2])])
+        registry_model = ("sklearn", sk)
+    else:                                           # XGBoost が勝ったときも、成果物を Model Registry に置けるように
+        registry_model = ("xgboost", model[2])
     art["metrics"] = {"chosen": best, "logloss_gain_vs_baseline": round(gain, 4),
                       **{k: {m: round(cv[k][m], 4) for m in ("auc", "logloss", "brier")} for k in (*cands, "baseline")}}
     art["gate"] = {"passed": not reasons, "reasons": reasons}
-    return {"artifact": art, "oof": cv[best]["oof"].tolist(), "oof_kind": best, "sk": sk}
+    return {"artifact": art, "oof": cv[best]["oof"].tolist(), "oof_kind": best, "sk": sk, "registry_model": registry_model}

@@ -19,7 +19,7 @@ const dayNums = (dates: string[] | undefined, month: string) => [...new Set((dat
 
 /** ソルバーを使うか（VITE_USE_SOLVER=0 で無効。端末ごとに localStorage の care-no-solver=1 でも止められる） */
 export function solverEnabled(): boolean {
-  if ((import.meta.env.VITE_USE_SOLVER as string | undefined) === '0') return false;
+  if ((import.meta.env?.VITE_USE_SOLVER as string | undefined) === '0') return false;
   try { if (localStorage.getItem('care-no-solver') === '1') return false; } catch { /* 読めなければ使う */ }
   return true;
 }

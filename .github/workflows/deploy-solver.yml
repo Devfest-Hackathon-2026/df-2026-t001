@@ -1,3 +1,6 @@
+# 注: このワークフローは開発用リポジトリ 32Lwk/gdgoc-care-connect で実行される。
+# GCP 側の Workload Identity Federation はそのリポジトリのみを信頼する設定（infra/variables.tf の github_repo）のため、
+# 提出用リポジトリ（本リポジトリ）では deploy ジョブが認証できず実行されない。参照用に同じ定義を置いている。
 name: Deploy care-solver-api (CP-SAT / Gemini / learning API)
 
 on:

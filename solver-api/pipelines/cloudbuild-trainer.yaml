@@ -1,4 +1,10 @@
+# gcloud builds submit solver-api --config solver-api/pipelines/cloudbuild-trainer.yaml --project <PROJECT> --region asia-northeast1
+# _REGION / _REPO / _TAG は --substitutions で変えられる。プロジェクトは実行中のプロジェクト（$PROJECT_ID）
+substitutions:
+  _REGION: asia-northeast1
+  _REPO: cloud-run-source-deploy
+  _TAG: v1
 steps:
   - name: gcr.io/cloud-builders/docker
-    args: ["build", "-f", "pipelines/Dockerfile.trainer", "-t", "asia-northeast1-docker.pkg.dev/gdgoc-514203/cloud-run-source-deploy/care-trainer:v1", "."]
-images: ["asia-northeast1-docker.pkg.dev/gdgoc-514203/cloud-run-source-deploy/care-trainer:v1"]
+    args: ["build", "-f", "pipelines/Dockerfile.trainer", "-t", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/care-trainer:${_TAG}", "."]
+images: ["${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/care-trainer:${_TAG}"]

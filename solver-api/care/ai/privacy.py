@@ -18,6 +18,11 @@ INFO_TYPES = ["PERSON_NAME", "PHONE_NUMBER", "EMAIL_ADDRESS", "STREET_ADDRESS", 
 HONORIFICS = "さん|君|くん|氏|先輩|ちゃん|主任"
 
 
+def as_data(s: str) -> str:
+    """利用者が書ける文字列をプロンプトに入れるとき、区切り（<data>…</data>）を壊せないようにする。"""
+    return (s or "").replace("<", "＜").replace(">", "＞")
+
+
 def pseudonymize(text: str, staff: list[StaffMember]) -> tuple[str, dict[str, str]]:
     """氏名 → ID。(置換後の文章, {ID: 氏名}) を返す。姓だけは敬称がついているときに限って置き換える。"""
     out, seen = text, {}
@@ -60,4 +65,4 @@ class Masker:
             })
             return r.item.value
         except Exception as e:  # noqa: BLE001
-            raise AIError(f"個人情報のマスクに失敗しました（安全のため AI は呼びません）: {str(e)[:120]}") from e
+            raise AIError(f"DLP: {str(e)[:200]}") from e        # 詳細は呼び出し側がログにだけ残す（利用者には返さない）

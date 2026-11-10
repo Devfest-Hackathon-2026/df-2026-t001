@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { SHIFTS, TASKS, UNITS, floorOf, residentsOf, staffById, unitName } from '../core/facility';
+import { SHIFTS, TASKS, UNITS, floorOf, residentsOf, unitName } from '../core/facility';
 import { addDays, fmtHM, fmtLong, fmtMin, stampDay, stampMin } from '../core/dates';
 import { RANGE_END, RANGE_START, buildDay, coverage, issueTime } from '../core/roster';
 import type { DayRow, TaskBlock } from '../core/types';
@@ -132,4 +132,3 @@ export function Day({ s, date, go, openStaff, openResident }: { s: State; date: 
     </div>
   );
 }
-void staffById;

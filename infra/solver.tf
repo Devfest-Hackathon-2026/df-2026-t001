@@ -74,11 +74,11 @@ resource "google_cloud_run_v2_service" "solver" {
       }
       env {
         name  = "AI_DAILY_LIMIT"
-        value = "300"
+        value = "600"
       }
       env {
         name  = "AI_IP_DAILY_LIMIT"
-        value = "20"
+        value = "40"
       }
       resources {
         limits            = { cpu = "4", memory = "2Gi" }

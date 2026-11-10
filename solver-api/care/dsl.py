@@ -139,6 +139,10 @@ class RuleBase(BaseModel):
     lifecycle: Lifecycle = Field(default_factory=Lifecycle)
     locked: bool = False                    # 施設基準由来など。破るときは理由の記録を要する
 
+    def active_on(self, d: date) -> bool:
+        """その日に効くか（停止していない・期限内）。期限 expires_on の日までは効く。"""
+        return self.lifecycle.active_on(d)
+
 
 # ---------------------------------------------------------------- 月次の5型
 
@@ -211,6 +215,7 @@ class TaskRequest(RuleBase):
 
 MonthlyRule = Annotated[Union[Staffing, Request, Succession, Count, Balance], Field(discriminator="type")]
 DailyRule = TaskRequest
+AnyRule = Annotated[Union[Staffing, Request, Succession, Count, Balance, TaskRequest], Field(discriminator="type")]
 
 
 # ---------------------------------------------------------------- 表
@@ -225,3 +230,18 @@ class Month(BaseModel):
 
     def weekday(self, day: int) -> int:
         return (self.first_weekday + day - 1) % 7
+
+    def date_of(self, day: int) -> date | None:
+        """月の day 日の日付。month が YYYY-MM でなければ None（期限の判定をしない）。"""
+        try:
+            y, m = map(int, self.month.split("-"))
+            return date(y, m, day)
+        except (ValueError, TypeError):
+            return None
+
+    def active(self, rule, day: int) -> bool:
+        """ルールが day 日に効くか（停止・期限）。期限が月の途中で切れるルールは、期限の日までだけ効く。"""
+        if rule.lifecycle.stopped:
+            return False
+        d = self.date_of(day)
+        return d is None or rule.lifecycle.active_on(d)

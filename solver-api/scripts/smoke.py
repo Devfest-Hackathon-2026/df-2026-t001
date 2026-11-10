@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """API の通し確認（標準ライブラリのみ）。ローカルでもデプロイ先でも同じ手順で動く。
 
-  python api/scripts/smoke.py https://<service-url> [facility]
+  python solver-api/scripts/smoke.py https://<service-url> [facility]
 
 求解 → 検証 → 日次 → 欠員（候補・打診・受諾）→ 組み直し案 → ルール追加と停止。
-Firestore に提案・手修正・欠員が追記される。デモ状態に戻すには api/scripts/reset_demo.py。
+Firestore に提案・手修正・欠員が追記される。デモ状態に戻すには solver-api/scripts/reset_demo.py。
 """
 import json
 import sys

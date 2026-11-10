@@ -94,7 +94,7 @@ def test_app_staff_only_vacancy_day_changes_and_minimal(client, app_roster, day,
     assert Counter(row[day - 1] for row in after.values())[shift] == Counter(row[day - 1] for row in cells.values())[shift]
     for c in j["changes"]:
         assert _labor_ok(after[c["staff_id"]]) and after[c["staff_id"]].count("夜勤") <= 8
-    assert j["explanation"] and "1件" in j["explanation"][0]
+    assert j["explanation"] and f"{j['changed_cells']}件" in j["explanation"][0]    # 入れ替えが要る表（解は実行ごとに変わりうる）では2件以上
 
 
 # ------------------------------------------------------------------ 小さな施設で、最小・硬制約・解けないとき
@@ -229,3 +229,16 @@ def test_does_not_chase_old_soft_shortfalls_but_restores_medical_night(client):
     cells["M"] = _row({})
     j = client.post(URL, json=_small(cells, night, 11, shift="夜勤", absent="N0", need_per_shift={"夜勤": 3})).json()
     assert j["status"] == "OPTIMAL" and j["changes"] == [{"staff_id": "M", "from": "", "to": "夜勤"}]
+
+
+def test_unexpected_errors_are_not_500(client, monkeypatch):
+    from care import inline_replan
+
+    def boom(*a, **k):
+        raise KeyError("x")
+
+    monkeypatch.setattr(inline_replan, "_model", boom)
+    staff = [{"staff_id": "L1", "shifts": ["遅番", "日勤"]}, {"staff_id": "L2", "shifts": ["遅番", "日勤"]}]
+    cells = {"L1": _row({}, "遅番"), "L2": _row({}, "日勤")}
+    r = client.post(URL, json=_small(cells, staff, 10))
+    assert r.status_code == 422

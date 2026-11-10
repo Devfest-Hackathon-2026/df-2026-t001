@@ -273,3 +273,68 @@ def test_run_id_from_pipeline_job_is_a_string_version():
     assert rid("5215997950018191360") == "run-5215997950018191360"            # ジョブ ID は数字だけ。BigQuery に整数と誤判定させない
     assert rid("v20261109163138") == "v20261109163138"
     assert dict(RUNS_SCHEMA)["version"] == "STRING" and dict(SCORES_SCHEMA)["model_version"] == "STRING"
+
+
+# ---------------------------------------------------------------- パイプライン（汚染対策・Model Registry）
+
+def test_live_events_are_excluded_by_default_and_capped_when_opted_in():
+    from care.learn import steps
+    assert steps.parse_sources("") == [] and steps.real_offers_sql([]) is None
+    assert "events_raw" not in steps.edits_sql("fac-a", [])                         # 既定は合成データだけ
+    sql = steps.real_offers_sql(steps.parse_sources("trusted"), cap_per_staff=7, cap_per_ip=9)
+    assert "source IN ('trusted')" in sql and "n_staff <= 7" in sql and "n_ip <= 9" in sql
+    assert "COALESCE(JSON_VALUE(data,'$.source'), 'public_api')" in sql              # 印の無いイベントは公開 API とみなす
+    e = steps.edits_sql("fac-a", ["trusted", "public_api"], cap_per_ip=3)
+    assert "source IN ('trusted', 'public_api')" in e and "n_ip <= 3" in e and "fac-a" in e and "{fid}" not in e and "{sources}" not in e
+    with pytest.raises(ValueError):
+        steps.parse_sources("x'); DROP TABLE t; --")
+
+
+def test_xgboost_winner_is_saved_for_registry(offers, tmp_path, monkeypatch):
+    import os
+    import xgboost as xgb
+    from care.learn import steps
+    rows = rows_of(offers, "fac-sakura")
+    stats, base = train._stats(rows)
+    model = train._fit_xgb(train._matrix(rows, stats, base, loo=True), np.array([train.label(r) for r in rows]))
+    path, name = steps.save_registry_model("xgboost", model[2])
+    try:
+        assert name == "model.bst" and os.path.getsize(path) > 0
+        b = xgb.Booster()
+        b.load_model(path)
+    finally:
+        os.unlink(path)
+    out = train.train_facility("fac-sakura", rows, version="t1")
+    fmt, obj = out["registry_model"]
+    assert fmt == ("xgboost" if out["artifact"]["kind"] == "xgboost" else "sklearn")
+    p2, n2 = steps.save_registry_model(fmt, obj)
+    os.unlink(p2)
+    assert n2 in ("model.joblib", "model.bst") and steps.SERVING_IMAGES[fmt]
+
+
+def test_register_failure_is_not_swallowed(monkeypatch):
+    import sys
+    import types as t
+    from care.learn import steps
+    art = {"gate": {"passed": True, "reasons": []}, "kind": "xgboost", "trained_at": "x", "n_rows": 10, "metrics": {}}
+    store = {"runs/r1/models/fac-a.json": json.dumps(art)}
+    monkeypatch.setattr(steps, "read_text", lambda root, p: store.get(p))
+    monkeypatch.setattr(steps, "write_text", lambda root, p, txt: store.__setitem__(p, txt))
+    seen = {}
+
+    def boom(*a, **k):
+        seen["fmt"] = k.get("fmt")
+        seen["uri"] = a[4]
+        raise RuntimeError("registry down")
+    monkeypatch.setattr(steps, "register", boom)
+    fake_bq = t.SimpleNamespace(Client=lambda project: t.SimpleNamespace(load_table_from_json=lambda *a, **k: t.SimpleNamespace(result=lambda: None)),
+                                LoadJobConfig=lambda **k: None, SchemaField=lambda *a: None)
+    monkeypatch.setitem(sys.modules, "google.cloud.bigquery", fake_bq)
+    import google.cloud
+    monkeypatch.setattr(google.cloud, "bigquery", fake_bq, raising=False)
+    with pytest.raises(RuntimeError, match="Model Registry"):
+        steps.promote("p", "gs://b", "r1", ["fac-a"])
+    assert seen == {"fmt": "xgboost", "uri": "gs://b/runs/r1/registry/fac-a/model.bst"}
+    assert "models/fac-a/champion.json" in store                                     # champion は更新済み
+    res = steps.promote("p", "gs://b", "r1", ["fac-a"], strict_registry=False)
+    assert res[0]["registry"] is None and "registry down" in res[0]["registry_error"]

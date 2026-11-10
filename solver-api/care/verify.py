@@ -27,10 +27,11 @@ def verify_monthly(fac: Facility, month: Month, cells: dict[str, list[str]], rul
             if k != OFF and k not in s.shifts:
                 bump("allowed-shift")
     for r in rules:
-        if r.lifecycle.stopped:
+        act = [d for d in range(1, N + 1) if month.active(r, d)]       # 停止・期限（期限の日までだけ効く）
+        if not act:
             continue
         people = [s for s in fac.staff if r.people.match(s)] if hasattr(r, "people") else []
-        days = [d for d in range(1, N + 1) if r.days.match(d, month.weekday(d))] if hasattr(r, "days") else []
+        days = [d for d in act if r.days.match(d, month.weekday(d))] if hasattr(r, "days") else []
         if isinstance(r, Staffing):
             kinds = r.shifts.kinds()
             for d in days:
@@ -48,12 +49,14 @@ def verify_monthly(fac: Facility, month: Month, cells: dict[str, list[str]], rul
             if r.max_run is not None:
                 for p in people:
                     for s0 in range(1, N - r.max_run + 1):
-                        if all(_kind(cells, p.staff_id, s0 + i) in WORK_SHIFTS for i in range(r.max_run + 1)):
+                        if s0 in act and all(_kind(cells, p.staff_id, s0 + i) in WORK_SHIFTS for i in range(r.max_run + 1)):
                             bump(r.id)
             else:
                 pats = [sel.kinds() for sel in r.pattern]
                 for p in people:
                     for s0 in range(1, N - len(pats) + 2):
+                        if s0 not in act:
+                            continue
                         match = all(_kind(cells, p.staff_id, s0 + i) in ks for i, ks in enumerate(pats))
                         if match == r.forbid:
                             bump(r.id)
@@ -68,7 +71,7 @@ def verify_monthly(fac: Facility, month: Month, cells: dict[str, list[str]], rul
                     bump(r.id)
         elif isinstance(r, Balance):
             kinds = r.shifts.kinds()
-            cnts = [sum(1 for d in range(1, N + 1) if _kind(cells, p.staff_id, d) in kinds) for p in people]
+            cnts = [sum(1 for d in act if _kind(cells, p.staff_id, d) in kinds) for p in people]
             if cnts and max(cnts) - min(cnts) > r.max_spread:
                 bump(r.id)
     # 前月末からの引き継ぎ（夜勤明け・遅番→早番）

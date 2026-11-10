@@ -115,7 +115,7 @@ def solve_daily(fac: Facility, month: Month, cells: dict[str, list[str]], day: i
     a: dict[tuple[int, int], cp_model.IntVar] = {}      # (duty, staff index)
     unmet = {d.idx: m.new_bool_var(f"unmet_{d.idx}") for d in duties}
     penalty_terms: list = []
-    rules = [r for r in (rules or []) if not r.lifecycle.stopped]
+    rules = [r for r in (rules or []) if month.active(r, day)]       # 停止・期限（期限の日までだけ効く）
 
     for d in duties:
         elig = []

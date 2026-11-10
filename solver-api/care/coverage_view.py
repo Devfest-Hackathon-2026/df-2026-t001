@@ -5,8 +5,7 @@ from .dsl import Facility, Month
 from .solver.coverage import slot_label
 from .solver.daily import DailyResult, on_duty
 
-TASK_JA = {"handover": "引継", "wake": "起床", "meal": "食事", "excretion": "排泄", "bath": "入浴", "med": "配薬", "medical": "医ケア",
-           "round": "巡回", "record": "記録", "rec": "レク", "transport": "送迎", "laundry": "環境", "bed": "就寝", "watch": "見守", "nap": "仮眠"}
+from .vocab import TASK_JA  # 表示名は vocab に一本化
 
 
 def day_timeline(fac: Facility, mo: Month, cells, day: int, res: DailyResult, ci=None) -> str:

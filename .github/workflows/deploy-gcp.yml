@@ -1,9 +1,12 @@
+# 注: このワークフローは開発用リポジトリ 32Lwk/gdgoc-care-connect で実行される。
+# GCP 側の Workload Identity Federation はそのリポジトリのみを信頼する設定（infra/variables.tf の github_repo）のため、
+# 提出用リポジトリ（本リポジトリ）では deploy ジョブが認証できず実行されない。参照用に同じ定義を置いている。
 name: Deploy to GCP (care-api + Firebase Hosting)
 
 on:
   push:
     branches: [main]
-    paths: ["api/**", "firestore.rules", "src/**", "public/**", "index.html", "employee.html", "package.json", "package-lock.json", "vite.config.ts", "firebase.json", ".github/workflows/deploy-gcp.yml"]
+    paths: ["api/**", "firestore.rules", "src/**", "public/**", "index.html", "employee.html", "package.json", "package-lock.json", "vite.config.ts", "tsconfig.json", "firebase.json", ".github/workflows/deploy-gcp.yml"]
   workflow_dispatch:
 
 concurrency:
@@ -24,6 +27,11 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install -r api/requirements-dev.txt
       - run: cd api && python -m pytest -q
+      # フロントエンドの型チェック + ビルド（tsc --noEmit && vite build）。デプロイ前に壊れていないことを確認する
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: npm }
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
 
   deploy:
     needs: test
@@ -49,10 +57,10 @@ jobs:
       - name: Deploy Cloud Run
         run: gcloud run deploy care-api --image "$IMAGE:${{ github.sha }}" --region "$REGION" --project "$PROJECT_ID"
       - uses: actions/setup-node@v4
-        with: { node-version: "22" }
+        with: { node-version: "22", cache: npm }
       - name: Build UI (Vite)
         run: |
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
           npm run build
       - name: Deploy Firebase Hosting and Firestore rules
         run: npx --yes firebase-tools@14 deploy --only hosting,firestore:rules --project "$PROJECT_ID"

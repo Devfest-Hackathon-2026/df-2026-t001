@@ -1,6 +1,6 @@
 """ローカルで月次＋日次を解いて要約を出す（デモ・計測用）。
 
-  api/.venv/bin/python -m care.cli --facility fac-sakura --day 12
+  cd solver-api && .venv/bin/python -m care.cli --facility fac-sakura --day 12
 """
 from __future__ import annotations
 

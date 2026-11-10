@@ -185,7 +185,7 @@ resource "google_cloud_run_v2_service" "api" {
   depends_on = [google_project_service.apis]
 }
 
-# 一般公開（ハッカソンデモ・ユーザー確認済み）
+# 一般公開（ハッカソンのデモ用。架空データのみを扱う前提でチームで合意）
 resource "google_cloud_run_v2_service_iam_member" "public" {
   name     = google_cloud_run_v2_service.api.name
   location = var.region

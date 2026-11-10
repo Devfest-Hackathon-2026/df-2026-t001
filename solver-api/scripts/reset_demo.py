@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """施設のデモ状態を初期（P1 のシード）に戻す。API が追記した提案・手修正・欠員・ルールの履歴を消す。
 
-  api/.venv/bin/python api/scripts/reset_demo.py fac-hidamari [project]
+  solver-api/.venv/bin/python solver-api/scripts/reset_demo.py fac-hidamari [project]
 
-初期ルール（defaults.py の id）と、シードした従業員・日課・勤務表は消さない。
+初期ルール（defaults.py の id）は消さずに、初期の内容で上書きする（停止・期限を戻す。seed_rules.py と同じ形）。
+API から追加したルールは消す。シードした従業員・日課・勤務表は消さない。
 """
 import sys
 from pathlib import Path
@@ -17,7 +18,8 @@ from care.store import FirestoreRepo  # noqa: E402
 fid = sys.argv[1]
 repo = FirestoreRepo(sys.argv[2] if len(sys.argv) > 2 else "gdgoc-514203")
 ref = repo.db.collection("facilities").document(fid)
-keep = {r.id for r in default_rules(Svc(repo).facility(fid), month_obj("2026-11"))}
+defaults = default_rules(Svc(repo).facility(fid), month_obj("2026-11"))
+keep = {r.id for r in defaults}
 n = 0
 for sub in ("proposals", "edits", "vacancies", "ruleEvents"):
     for d in ref.collection(sub).stream():
@@ -27,4 +29,6 @@ for d in ref.collection("rules").stream():
     if d.id not in keep:
         d.reference.delete()
         n += 1
-print(f"{fid}: deleted {n} documents")
+for r in defaults:   # 停止（lifecycle.stopped）・期限・ラベルの変更を、初期の内容に戻す
+    ref.collection("rules").document(r.id).set(r.model_dump(mode="json"))
+print(f"{fid}: deleted {n} documents, restored {len(defaults)} default rules")

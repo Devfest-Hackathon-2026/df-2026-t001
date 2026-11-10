@@ -1,9 +1,9 @@
 // 「シフト作成君」：自然文 → 構造化 → 正規化 → 影響チェック（ルールベース）
 // ルールで読み取れない言い回しは、Gemini の分類（aiintent.ts）の出力を同じ AiItem スキーマに通して検証してから使う。
 import type { AiItem, AiProposal, Assignment, ShiftCode, RequestKind } from './types';
-import { addDays, dow, fmtMD, parseYmd, toYmd, fmtHM, toMin, DOW_JA } from './dates';
+import { addDays, dow, fmtMD, fmtHM, toMin, DOW_JA, resolveDayOfMonth, resolveMonthDay } from './dates';
 import { coverage, buildDay } from './roster';
-import { SHIFTS, staffById, unitName } from './facility';
+import { SHIFTS, unitName } from './facility';
 
 const REASONS: [RegExp, string][] = [
   [/(子ども|子供|息子|娘).{0,3}(発熱|熱)/, '子どもの熱'], [/体調|熱|風邪|発熱|具合|頭痛|腹痛|吐き気/, '体調不良'], [/送迎|送り迎え|お迎え|保育園|学校|子ども|子供|息子|娘/, '子どもの送迎'],
@@ -12,9 +12,9 @@ const REASONS: [RegExp, string][] = [
 
 export function extractDates(text: string, today: string): string[] {
   const out: string[] = [];
-  const y = parseYmd(today).getFullYear();
-  for (const m of text.matchAll(/(\d{1,2})\s*[\/月]\s*(\d{1,2})\s*日?/g)) out.push(`${y}-${String(+m[1]).padStart(2, '0')}-${String(+m[2]).padStart(2, '0')}`);
-  if (!out.length) for (const m of text.matchAll(/(?<![\d\/月])(\d{1,2})日/g)) { const d = parseYmd(today); const cand = new Date(d.getFullYear(), d.getMonth(), +m[1]); if (cand < d) cand.setMonth(cand.getMonth() + 1); out.push(toYmd(cand)); }
+  // 日付は実在チェックをして、過ぎた日付は次に来る日付に寄せる（12月の「1/5」→翌年、11月の「31日」→12/31、「2/30」は無視）
+  for (const m of text.matchAll(/(\d{1,2})\s*[\/月]\s*(\d{1,2})\s*日?/g)) { const d = resolveMonthDay(today, +m[1], +m[2]); if (d) out.push(d); }
+  if (!out.length) for (const m of text.matchAll(/(?<![\d\/月])(\d{1,2})日/g)) { const d = resolveDayOfMonth(today, +m[1]); if (d) out.push(d); }
   if (/明後日/.test(text)) out.push(addDays(today, 2)); else if (/明日/.test(text)) out.push(addDays(today, 1));
   if (/今日|本日/.test(text)) out.push(today);
   const wk = text.match(/(来週|今週)?の?([日月火水木金土])曜/);
@@ -23,7 +23,7 @@ export function extractDates(text: string, today: string): string[] {
 }
 const shiftIn = (t: string): ShiftCode | undefined => (/夜勤|夜/.test(t) ? '夜勤' : /早番|朝/.test(t) ? '早番' : /遅番|夕/.test(t) ? '遅番' : /日勤/.test(t) ? '日勤' : undefined);
 
-export function proposeFromText(raw: string, staffId: string, today: string, all: Assignment[], collectionMonth?: string): AiProposal {
+export function proposeFromText(raw: string, staffId: string, today: string, all: Assignment[], collectionMonth?: string, deadline?: string): AiProposal {
   const items: AiItem[] = [];
   const t = raw.replace(/\s+/g, '');
   const reason = REASONS.find(([r]) => r.test(raw))?.[1];
@@ -60,6 +60,7 @@ export function proposeFromText(raw: string, staffId: string, today: string, all
   if (kind) {
     const ds = dates.length ? dates : [today];
     for (const d of ds) {
+      if (kind === '希望休' && collectionMonth && d.startsWith(collectionMonth) && deadline && today > deadline) { items.push({ type: 'unknown', date: d, normalized: `${fmtMD(d)} の希望休は、締切（${fmtMD(deadline)}）を過ぎたため受け付けできません`, impact: '変更したい場合は、リーダーに相談してください（チャットの「リーダー」から送れます）。', detail: raw }); continue; }
       if (kind === '希望休' && collectionMonth && d.startsWith(collectionMonth)) { items.push({ type: 'dayoff', date: d, reason, normalized: `${fmtMD(d)} を希望休として提出${reason ? `（理由：${reason}）` : ''}`, impact: '来月のシフト作成のときに、できるだけ休みにします（確定ではありません）。締切まで何度でも変更できます。' }); continue; }
       const mine = all.find((a) => a.staffId === staffId && a.date === d && a.status !== 'absent');
       const sh = shiftIn(t);
@@ -78,7 +79,8 @@ export function proposeFromText(raw: string, staffId: string, today: string, all
   }
   if (!items.length) items.push({ type: 'unknown', normalized: '読み取れませんでした', impact: '日付と内容（例：「11/20の夜勤を休みたい。体調不良です」「休憩は02:00ごろがいい」）を添えて送ってください。' });
   const known = items.filter((i) => i.type !== 'unknown');
-  const summary = known.length ? `${known.length}件の内容を読み取りました。` : '内容を特定できませんでした。';
+  const closedItem = items.find((i) => i.type === 'unknown' && i.date); // 締切後の希望休（読み取れたが受け付けない）
+  const summary = known.length ? `${known.length}件の内容を読み取りました。` : closedItem ? `${closedItem.normalized}。${closedItem.impact}` : '内容を特定できませんでした。';
   return { id: `P-${Date.now()}`, raw, items, state: 'draft', summary };
 }
 
@@ -102,4 +104,3 @@ export function applyKind(a: Assignment, kind: RequestKind, detail?: string): As
   if (kind === '早退') { const h = detail?.match(/(\d{2}:\d{2})/); return { ...a, status: 'early', earlyAt: h ? h[1] : fmtHM(SHIFTS[a.shift].end - 60) }; }
   return a;
 }
-void staffById;

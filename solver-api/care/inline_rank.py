@@ -82,6 +82,13 @@ class RankIn(BaseModel):
 
     @model_validator(mode="after")
     def _cells(self):
+        try:                       # 形（pattern）だけでなく暦として正しいか（2026-02-30 は 422。500 にしない）
+            Date.fromisoformat(self.date)
+            _ts(self.discovered_at)
+            for x in (*self.assignments, *self.avail):
+                Date.fromisoformat(x.date)
+        except ValueError as e:
+            raise ValueError(f"日付・時刻が不正です: {e}") from None
         if self.cells is not None:
             check_cells(self.cells, self.date)
         return self
@@ -196,6 +203,9 @@ def register(app, svc_ref: Callable[[], object | None]) -> None:
             art = ms.champion(os.getenv("RANK_PRIOR_FACILITY", "fac-sakura")) if ms else None
         except Exception as e:  # noqa: BLE001  モデルが読めなくても止めない
             print(f"[inline-rank] model load failed: {type(e).__name__}")
-        return rank(body, art)
+        from .guard import heavy_slot  # 候補ごとに検証を回すので、求解と同じ同時実行の枠で動かす（分あたりの枠はミドルウェアで消費済み）
+
+        with heavy_slot():
+            return rank(body, art)
 
     app.include_router(router)

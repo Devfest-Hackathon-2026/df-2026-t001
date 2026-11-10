@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import type { State } from '../core/store';
-import { submitMonthRequests } from '../core/store';
+import { collectionClosed, submitMonthRequests } from '../core/store';
 import { MY_ID, SHIFTS, SHIFT_ORDER } from '../core/facility';
 import { fmtMD, parseYmd, addDays, stampDay, stampTime } from '../core/dates';
 import { eventsOn, holidayOf } from '../core/events';
@@ -19,8 +19,12 @@ export function myMonth(s: State): MonthData {
   const m = s.collection.month;
   return { dayOff: (s.collection.submitted[MY_ID]?.dates ?? []).filter((d) => d.startsWith(m)), avail: (s.availability[MY_ID] ?? []).filter((x) => x.date.startsWith(m)), hope: s.prefs[MY_ID].shiftHope };
 }
-export const isSubmitted = (s: State) => !!s.collection.submitted[MY_ID];
-export const isClosed = (s: State) => s.today > s.collection.deadline;
+export const isClosed = (s: State) => collectionClosed(s);
+
+/** お知らせ（link: 'dayoff'）から「来月の希望」の画面を開く。シフトタブが開いたときに1回だけ読む */
+let pendingOpen = false;
+export const requestMonthOpen = () => { pendingOpen = true; window.dispatchEvent(new Event('emp-open-month')); };
+export const takeMonthOpen = () => { const v = pendingOpen; pendingOpen = false; return v; };
 
 /** シフト作成君の要約文（平易な日本語） */
 export function summarize(d: MonthData): string[] {
@@ -137,7 +141,7 @@ export function MonthCard({ s, c, quiet, onOpen }: { s: State; c: Ctx; quiet?: b
       <div class="row spread" style="gap:12px;align-items:flex-start">
         <div style="min-width:0"><b style="font-size:17px">{mlabel}の希望</b>
           <div class="muted" style="margin-top:2px">{closed ? `締切（${fmtMD(col.deadline)}）を過ぎました` : sub ? `提出済み（${stampDay(sub.at).slice(5).replace('-', '/')} ${stampTime(sub.at)}）・締切まであと${Math.max(0, left)}日` : `まだ提出していません・締切 ${fmtMD(col.deadline)}（あと${Math.max(0, left)}日）`}</div></div>
-        {sub ? <span class="chip ok">提出済み</span> : <span class={`chip ${closed ? 'bad' : 'warn'}`}>{closed ? '未提出' : '未提出'}</span>}
+        {sub ? <span class="chip ok">提出済み</span> : <span class={`chip ${closed ? 'bad' : 'warn'}`}>{closed ? '未提出（締切済み）' : '未提出'}</span>}
       </div>
       {sub ? <p style="margin-top:8px">{summaryText(d)}</p> : <p class="small" style="margin-top:8px">休みたい日・入れる日を、カレンダーにタップで塗って出せます。シフト作成君が内容をまとめて確認します。</p>}
       <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">

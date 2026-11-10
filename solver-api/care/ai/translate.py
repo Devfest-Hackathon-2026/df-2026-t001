@@ -119,10 +119,10 @@ def _what(d: RuleDraft) -> str:
     if d.type == "succession":
         return f"連続勤務は{d.max_run}日まで" if d.max_run is not None else f"{ids}のあとに{'・'.join(d.after_shift_ids)}を置かない"
     if d.type == "count":
-        lo = f"{d.at_least}" if d.at_least is not None else ""
-        hi = f"{d.at_most}" if d.at_most is not None else ""
-        rng = f"{lo}〜{hi}" if lo and hi else (f"{lo}以上" if lo else f"{hi}以下")
-        return f"{ids}は月{rng}{d.unit}"
+        u = d.unit or ""
+        lo, hi = d.at_least, d.at_most
+        rng = f"{lo}〜{hi}{u}" if lo is not None and hi is not None else (f"{lo}{u}以上" if lo is not None else f"{hi}{u}以下")
+        return f"{ids}は月{rng}"
     hrs = ""
     if d.from_hour is not None or d.to_hour is not None:
         hrs = f"{d.from_hour if d.from_hour is not None else 0:g}時〜{d.to_hour if d.to_hour is not None else 24:g}時の"

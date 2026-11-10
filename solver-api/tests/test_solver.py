@@ -186,3 +186,43 @@ def test_build_duties_chunks_long_windows():
     assert sum(1 for x in d if x.template_id == "A") == 8                # 8時間 → 1時間×8枠
     assert sum(1 for x in d if x.template_id == "B") == 3
     assert max(x.end for x in d) <= SLOTS
+
+
+# ---------------------------------------------------------------- 期限（lifecycle.expires_on）
+
+def test_rule_expiry_applies_only_until_expires_on():
+    from datetime import date
+
+    from care.dsl import Lifecycle, Request
+
+    fac, _, _ = _tiny_facility()
+    mo = Month(month="2026-11", days=30, first_weekday=0)
+    sid = fac.staff[0].staff_id
+    # 11/10 までは sid は全日休み（絶対）。期限の後は効かない
+    r = Request(id="x-off", label="x", strength="絶対", people=PeopleSel(ids=[sid]), days=DaySel(), shifts=ShiftSel(ids=["休"]),
+                want=True, lifecycle=Lifecycle(expires_on=date(2026, 11, 10)))
+    assert mo.active(r, 10) and not mo.active(r, 11)
+    cells = {s.staff_id: ["日勤"] * 30 for s in fac.staff}
+    assert verify_monthly(fac, mo, cells, [r]) == {"x-off": 10}
+    cells[sid] = [""] * 10 + ["日勤"] * 20
+    assert verify_monthly(fac, mo, cells, [r]) == {}
+    # この日だけのルール（期限 = その日）は、その日が過ぎた月には効かない
+    once = Request(id="x-once", label="x", strength="絶対", people=PeopleSel(ids=[sid]), days=DaySel(dates=[20]),
+                   shifts=ShiftSel(ids=["休"]), want=True, lifecycle=Lifecycle(expires_on=date(2026, 10, 20)))
+    assert verify_monthly(fac, mo, {s.staff_id: ["日勤"] * 30 for s in fac.staff}, [once]) == {}
+    # ソルバーも同じ: 期限内は休み、期限の後は勤務できる（勤務を希望するルールで確かめる）
+    want = Request(id="x-want", label="x", strength="強く", people=PeopleSel(ids=[sid]), days=DaySel(), shifts=ShiftSel(ids=["日勤"]),
+                   want=True)
+    m = solve_monthly(fac, mo, [r, want], use_coverage=False, time_limit=5, workers=2)
+    assert m.status in ("OPTIMAL", "FEASIBLE")
+    assert all(m.cells[sid][d] == "" for d in range(10)) and any(m.cells[sid][d] == "日勤" for d in range(10, 30))
+
+
+def test_daily_task_rule_expiry():
+    from datetime import date
+
+    from care.dsl import Lifecycle
+
+    r = TaskRequest(id="t", label="t", people=PeopleSel(), task="bath", lifecycle=Lifecycle(expires_on=date(2026, 11, 5)))
+    mo = Month(month="2026-11", days=30, first_weekday=0)
+    assert mo.active(r, 5) and not mo.active(r, 6)

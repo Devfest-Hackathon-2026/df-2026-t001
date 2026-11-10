@@ -35,6 +35,8 @@ export interface State {
 export type PlanReqKind = 'work' | 'dayoff' | 'paid';
 export interface PlanReq { id: string; kind: PlanReqKind; staffId: string; date: string; shift?: ShiftCode; unitId?: string; status: 'pending' | 'accepted' | 'declined'; at: string; note?: string }
 export interface Collection { month: string; deadline: string; submitted: Record<string, { at: string; dates: string[] } | null>; remindedAt?: string; remindedN?: number; }
+/** 来月の希望（希望休）の締切を過ぎたか。締切日の当日までは受け付ける */
+export const collectionClosed = (s: Pick<State, 'today' | 'collection'>) => s.today > s.collection.deadline;
 const KEY = 'kana-care-state-v8';
 const VERSION = 8;
 let seq = 1000;
@@ -98,7 +100,7 @@ function seed(): State {
 let state: State = load();
 setSimNow(state.now);
 function load(): State {
-  try { const raw = localStorage.getItem(KEY); if (raw) { const s = JSON.parse(raw) as State; if (s.v === VERSION) return s; } } catch { /* ignore */ }
+  try { const raw = localStorage.getItem(KEY); if (raw) { const s = JSON.parse(raw) as State; if (s.v === VERSION) return withToday(s); } } catch { /* ignore */ }
   return seed();
 }
 const subs = new Set<() => void>();
@@ -113,8 +115,10 @@ function persist(s: State): State {
   }
   return s;
 }
-function commit(next: State) { const n = { ...next, now: addMinutes(next.now, 1) }; setSimNow(n.now); state = persist(n); subs.forEach((f) => f()); }
-if (typeof window !== 'undefined') window.addEventListener('storage', (e) => { if (e.key === KEY && e.newValue) { try { state = JSON.parse(e.newValue); setSimNow(state.now); subs.forEach((f) => f()); } catch { /* ignore */ } } });
+/** デモの時計：now が日付をまたいだら today も進める（today と now の日付がずれないように） */
+const withToday = (s: State): State => (stampDay(s.now) > s.today ? { ...s, today: stampDay(s.now) } : s);
+function commit(next: State) { const n = withToday({ ...next, now: addMinutes(next.now, 1) }); setSimNow(n.now); state = persist(n); subs.forEach((f) => f()); }
+if (typeof window !== 'undefined') window.addEventListener('storage', (e) => { if (e.key === KEY && e.newValue) { try { state = withToday(JSON.parse(e.newValue)); setSimNow(state.now); subs.forEach((f) => f()); } catch { /* ignore */ } } });
 
 export const getState = () => state;
 export function useStore(): State { const [, f] = useState(0); useEffect(() => { const fn = () => f((n) => n + 1); subs.add(fn); return () => { subs.delete(fn); }; }, []); return state; }
@@ -188,8 +192,8 @@ function replyToPendingOffer(staffId: string, text: string): boolean {
 export function askShiftMaker(staffId: string, text: string) {
   if (!text.trim()) return;
   if (replyToPendingOffer(staffId, text)) return;
-  const known = proposeFromText(text, staffId, state.today, state.assignments, state.collection.month);
-  const unknown = known.items.every((i) => i.type === 'unknown');
+  const known = proposeFromText(text, staffId, state.today, state.assignments, state.collection.month, state.collection.deadline);
+  const unknown = known.items.every((i) => i.type === 'unknown' && !i.date); // date つきの unknown は「締切後の希望休」など読み取れたが受け付けないもの
   const aid = uid('M');
   set((s) => {
     const u: ChatMessage = { id: uid('M'), thread: `ai:${staffId}`, from: staffId, text: text.trim(), at: nowStamp() };
@@ -200,7 +204,7 @@ export function askShiftMaker(staffId: string, text: string) {
   // ルールで読めない言葉は Gemini に分類してもらい、定型の文に直して同じ提案の流れに乗せる
   const patch = (fn: (m: ChatMessage) => ChatMessage) => set((s) => ({ messages: s.messages.map((m) => (m.id === aid ? fn(m) : m)) }));
   askEmployee(text.trim(), state.today).then((i) => {
-    const c = employeeSentence(i); const p = c ? proposeFromText(c, staffId, state.today, state.assignments, state.collection.month) : null;
+    const c = employeeSentence(i); const p = c ? proposeFromText(c, staffId, state.today, state.assignments, state.collection.month, state.collection.deadline) : null;
     if (p && !p.items.every((x) => x.type === 'unknown')) patch((m) => ({ ...m, text: p.summary, proposal: { ...p, raw: text.trim() } }));
     else patch((m) => ({ ...m, text: i.reply || known.summary, proposal: known }));
   }).catch((e: Error) => patch((m) => ({ ...m, text: `${e.message}\n日付と内容を入れて、もう一度送ってください（例：「11/20の夜勤を休みたい」）。`, proposal: known })));
@@ -216,12 +220,15 @@ export function confirmProposal(msgId: string, staffId: string) {
         const p = cur.prefs[staffId]; undo.prefs = { breakPref: p.breakPref, leaveBy: p.leaveBy, leaveReason: p.leaveReason, shiftHope: p.shiftHope };
         const np: Prefs = { ...p, ...Object.fromEntries(Object.entries(it.prefs).filter(([k]) => k !== 'shiftHope')), shiftHope: it.prefs.shiftHope ? Array.from(new Set([...p.shiftHope, ...it.prefs.shiftHope])) : p.shiftHope, history: [{ at: nowStamp(), text: `${it.normalized}（シフト作成君・原文：${m.proposal.raw}）` }, ...p.history] };
         cur = { ...cur, prefs: { ...cur.prefs, [staffId]: np } };
+      } else if (it.type === 'dayoff' && it.date && collectionClosed(cur)) {
+        // 提案を作った後に締切を過ぎた場合：希望休には追加しない（月次の画面と同じ扱い）
+        Object.assign(it, { type: 'unknown', normalized: `${fmtMD(it.date)} の希望休は、締切（${fmtMD(cur.collection.deadline)}）を過ぎたため追加できませんでした`, impact: '変更したい場合は、リーダーに相談してください。' });
       } else if (it.type === 'dayoff' && it.date) {
         const sub = cur.collection.submitted[staffId]; const ds = Array.from(new Set([...(sub?.dates ?? []), it.date]));
         cur = { ...cur, collection: { ...cur.collection, submitted: { ...cur.collection.submitted, [staffId]: { at: cur.now, dates: ds } } } };
         notices.push(notice({ to: 'leader', kind: 'info', title: `${staffById(staffId).name}さんが希望休を更新`, body: ds.map(fmtMD).join('、'), link: 'collection' }));
       } else if (it.type === 'avail' && it.avail) {
-        const cur0 = cur.availability[staffId] ?? []; undo.prefs = undo.prefs;
+        const cur0 = cur.availability[staffId] ?? [];
         cur = { ...cur, availability: { ...cur.availability, [staffId]: [...cur0.filter((x) => x.date !== it.avail!.date), it.avail] } };
       } else if (it.type === 'request' && it.kind && it.date) {
         const r: ShiftRequest = { id: uid('R'), staffId, date: it.date, kind: it.kind, reason: it.reason, detail: it.detail, status: it.needsApproval ? 'pending' : 'auto', via: 'ai', createdAt: nowStamp(), impact: it.impact };
@@ -237,7 +244,7 @@ export function confirmProposal(msgId: string, staffId: string) {
         notices.push(notice({ to: 'leader', kind: 'request', title: it.needsApproval ? `承認待ち：${staffById(staffId).name}さんの${it.kind}（AI正規化）` : `自動反映：${staffById(staffId).name}さんの${it.kind}`, body: it.normalized, link: 'requests' }));
       }
     }
-    const proposal: AiProposal = { ...m.proposal, items, undo, state: anyReview ? 'review' : 'applied' };
+    const proposal: AiProposal = { ...m.proposal, items, undo, state: items.every((i) => i.type === 'unknown') ? 'cancelled' : anyReview ? 'review' : 'applied' };
     return { ...cur, messages: cur.messages.map((x) => (x.id === msgId ? { ...x, proposal } : x)), notices: [...notices, ...cur.notices] };
   });
   kickoffAutopilot();
@@ -457,7 +464,7 @@ export async function delegateAutopilot(id: string, o: { max?: number; waitMin?:
 /** デモ用：時間を進める（返信待ち時間の経過・夜間送信待ちの解除） */
 export function advanceClock(min: number) {
   set((s) => {
-    let t: State = { ...s, now: addMinutes(s.now, min) };
+    let t: State = withToday({ ...s, now: addMinutes(s.now, min) });
     for (const v of s.vacancies) {
       const a = v.auto; if (!a || a.mode !== 'running' || !a.waitUntil || a.waitUntil > t.now) continue;
       if (a.pendingStaff) { t = sendOfferS(logS(t, v.id, '連絡可能な時間になったため打診を送ります', 'info'), v.id, a.pendingStaff); continue; }
@@ -551,7 +558,7 @@ export function remindUnsubmitted(): number {
   if (!left.length) return 0;
   set((s) => ({
     collection: { ...s.collection, remindedAt: nowStamp(), remindedN: left.length },
-    notices: [...left.map((id) => notice({ to: id, kind: 'info', title: `${s.collection.month.slice(5)}月分の希望休の提出をお願いします`, body: `締切：${fmtMD(s.collection.deadline)}。シフトタブの「希望休を出す」から提出できます。`, link: 'dayoff' })), ...s.notices],
+    notices: [...left.map((id) => notice({ to: id, kind: 'info', title: `${s.collection.month.slice(5)}月分の希望休の提出をお願いします`, body: `締切：${fmtMD(s.collection.deadline)}。シフトタブの「希望を出す」から提出できます。`, link: 'dayoff' })), ...s.notices],
     messages: [...s.messages, ...left.map((id) => ({ id: uid('M'), thread: `ai:${id}`, from: 'ai', text: `${s.collection.month.slice(5)}月分の希望休の提出をお願いします（締切 ${fmtMD(s.collection.deadline)}）。`, at: s.now }))],
   }));
   const month = state.collection.month;
@@ -597,6 +604,7 @@ export function setAssignmentSpan(assignmentId: string, startAt?: number, endAt?
 // ---- 来月の希望（希望休・入れる日・勤務帯）をまとめて提出・編集 ----
 export function submitMonthRequests(staffId: string, r: { dayOff: string[]; avail: { date: string; shifts: ShiftCode[] }[]; shiftHope: ShiftCode[]; note?: string }) {
   set((s) => {
+    if (collectionClosed(s)) return {}; // 締切後は受け付けない（画面でも止めているが、念のため）
     const m = s.collection.month;
     const keep = (s.availability[staffId] ?? []).filter((x) => !x.date.startsWith(m));
     const p = s.prefs[staffId];
@@ -631,6 +639,9 @@ function startSolver(month: string, nightMax?: number) {
   solveCtl?.abort();
   const base = state.plan;
   if (!base || base.month !== month || !solverEnabled()) { solving = null; solveCtl = null; return; }
+  // 別タブの更新（storage イベント）で state は JSON から作り直されるため、参照ではなく中身で「案が編集されていないか」を比べる
+  const baseKey = JSON.stringify(base);
+  const unchanged = (p: Plan | undefined) => p === base || (!!p && JSON.stringify(p) === baseKey);
   const ctl = new AbortController(); solveCtl = ctl;
   const timer = setTimeout(() => ctl.abort(), 25_000);
   solving = { month }; subs.forEach((f) => f());
@@ -638,7 +649,7 @@ function startSolver(month: string, nightMax?: number) {
   solveMonth(month, ctx, ctl.signal).then(({ draft, res }) => {
     if (solveCtl !== ctl) return;
     set((s) => {
-      if (s.plan !== base) return {};
+      if (!unchanged(s.plan)) return {};
       const p = finalize(month, draft, ctx, 'draft', base.createdAt);
       if (p.stats.vacantSlots > base.stats.vacantSlots) return { plan: { ...base, notes: [...base.notes, 'ソルバーの案は欠員枠が多かったため、簡易計算の案のままにしています'] } };
       return { plan: { ...p, notes: [...solverNote(draft, res), ...p.notes] } };
@@ -646,7 +657,7 @@ function startSolver(month: string, nightMax?: number) {
   }).catch((e) => {
     if (solveCtl !== ctl) return;
     console.info('[solver] 簡易計算の案を使います:', e);
-    set((s) => (s.plan === base ? { plan: { ...base, notes: [...base.notes, '最適化ソルバーに接続できなかったため、端末内の簡易計算で作成しました'] } } : {}));
+    set((s) => (unchanged(s.plan) ? { plan: { ...base, notes: [...base.notes, '最適化ソルバーに接続できなかったため、端末内の簡易計算で作成しました'] } } : {}));
   }).finally(() => {
     clearTimeout(timer);
     if (solveCtl === ctl) { solving = null; solveCtl = null; subs.forEach((f) => f()); }

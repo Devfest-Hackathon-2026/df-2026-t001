@@ -213,3 +213,155 @@ def test_cors_headers_are_present_even_on_429_and_413(client, monkeypatch):
     assert r.status_code == 429 and r.headers["access-control-allow-origin"] == "https://care.yutok.dev" and "retry-after" in r.headers
     big = client.post(f"{BASE}/rules", json={"id": "x", "label": "x" * 70000}, headers=h)
     assert big.status_code == 413 and big.headers["access-control-allow-origin"] == "https://care.yutok.dev"
+
+
+# ---------------------------------------------------------------- 欠員の状態・打診の検査・ルールの検証（修正の回帰テスト）
+
+def _vac(client, day=12, shift="日勤"):
+    sid = _working(client, shift=shift, day=day)
+    j = client.post(f"{BASE}/vacancies", json={"date": f"2026-11-{day:02d}", "shift": shift, "absent_staff_id": sid}).json()
+    return sid, j["vacancy"]["vacancy_id"], j
+
+
+def test_offer_rejects_absent_working_and_accept_rechecks(client):
+    absent, vid, j = _vac(client)
+    assert client.post(f"{BASE}/vacancies/{vid}/offers", json={"staff_id": absent}).status_code == 409       # 欠勤した本人
+    busy = _working(client, shift="早番", day=12)
+    r = client.post(f"{BASE}/vacancies/{vid}/offers", json={"staff_id": busy})
+    assert r.status_code == 409 and "すでに" in r.json()["error"]                                            # 当日すでに勤務
+    c = j["candidates"][0]["staff_id"]
+    o = client.post(f"{BASE}/vacancies/{vid}/offers", json={"staff_id": c}).json()
+    # 打診のあとで、その人に同じ日の早番が入った → 受諾は 409 で、早番は上書きされない
+    assert client.post(f"{BASE}/rosters/2026-11/edits", json={"staff_id": c, "day": 12, "to": "早番"}).status_code == 201
+    r = client.post(f"{BASE}/vacancies/{vid}/offers/{o['offer_id']}/respond", json={"status": "accepted"})
+    assert r.status_code == 409 and "早番" in r.json()["error"]
+    assert client.get(f"{BASE}/rosters/2026-11").json()["current"][c][11] == "早番"
+    assert server.svc().repo.vacancy(F, vid)["state"] == "offering"
+
+
+def test_hard_rule_breaker_cannot_be_offered(client):
+    _, vid, j = _vac(client)
+    hard = [x for x in j["excluded"] if "破る" in x["reason"]]
+    if not hard:
+        pytest.skip("この日は絶対のルールで外れる人がいない")
+    r = client.post(f"{BASE}/vacancies/{vid}/offers", json={"staff_id": hard[0]["staff_id"]})
+    assert r.status_code == 409 and "破る" in r.json()["error"]
+
+
+def test_only_one_accept_wins_and_terminal_states(client):
+    _, vid, j = _vac(client)
+    a, b = j["candidates"][0]["staff_id"], j["candidates"][1]["staff_id"]
+    oa = client.post(f"{BASE}/vacancies/{vid}/offers", json={"staff_id": a}).json()
+    ob = client.post(f"{BASE}/vacancies/{vid}/offers", json={"staff_id": b}).json()
+    assert oa["offer_id"] != ob["offer_id"]
+    assert client.post(f"{BASE}/vacancies/{vid}/offers/{oa['offer_id']}/respond", json={"status": "accepted"}).status_code == 200
+    assert client.post(f"{BASE}/vacancies/{vid}/offers/{ob['offer_id']}/respond", json={"status": "accepted"}).status_code == 409
+    cur = client.get(f"{BASE}/rosters/2026-11").json()["current"]
+    assert cur[a][11] == "日勤" and cur[b][11] == ""                                                        # 二重に埋まらない
+    assert client.post(f"{BASE}/vacancies/{vid}/replan", json={"apply": True}).status_code == 409           # 充足済みは組み直さない
+    # 断るのは受け付ける（打診が終わるだけ）
+    assert client.post(f"{BASE}/vacancies/{vid}/offers/{ob['offer_id']}/respond", json={"status": "declined"}).status_code == 200
+
+
+def test_replanned_vacancy_cannot_be_offered(client):
+    _, vid, j = _vac(client)
+    assert client.post(f"{BASE}/vacancies/{vid}/replan", json={"apply": True}).json()["applied"] is True
+    assert client.post(f"{BASE}/vacancies/{vid}/offers", json={"staff_id": j["candidates"][0]["staff_id"]}).status_code == 409
+
+
+def test_store_transition_is_compare_and_set(client):
+    _, vid, _ = _vac(client)
+    repo = server.svc().repo
+    import threading
+
+    wins = []
+    ts = [threading.Thread(target=lambda i=i: wins.append(repo.transition_vacancy(F, vid, {"open", "offering"}, {"state": "filled", "filled_by": i})))
+          for i in range(8)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert sum(1 for w in wins if w is not None) == 1
+
+
+def test_vacancy_ids_do_not_collide_and_no_orphan_absence(client, monkeypatch):
+    s1 = _working(client, shift="日勤", day=12)
+    v1 = client.post(f"{BASE}/vacancies", json={"date": "2026-11-12", "shift": "日勤", "absent_staff_id": s1}).json()["vacancy"]["vacancy_id"]
+    s2 = _working(client, shift="日勤", day=12)
+    v2 = client.post(f"{BASE}/vacancies", json={"date": "2026-11-12", "shift": "日勤", "absent_staff_id": s2}).json()["vacancy"]["vacancy_id"]
+    assert v1 != v2 and v1.startswith("VAC-20261112-HID")
+    # 欠勤の編集が失敗したら、欠員は取り消し（cancelled）・欠勤は残らない
+    s3 = _working(client, shift="夜勤", day=14)
+    repo = server.svc().repo
+
+    def boom(*a, **k):
+        from care.store import Conflict
+        raise Conflict("x")
+
+    monkeypatch.setattr(repo, "add_edit", boom)
+    r = client.post(f"{BASE}/vacancies", json={"date": "2026-11-14", "shift": "夜勤", "absent_staff_id": s3})
+    assert r.status_code == 409
+    monkeypatch.undo()
+    assert client.get(f"{BASE}/rosters/2026-11").json()["current"][s3][13] == "夜勤"
+    assert [v["state"] for v in repo.vacancies(F, "2026-11") if v["absent_staff_id"] == s3] == ["cancelled"]
+    assert client.post(f"{BASE}/vacancies", json={"date": "2026-11-14", "shift": "夜勤", "absent_staff_id": s3}).status_code == 201
+
+
+def test_bad_dates_are_4xx_not_500(client):
+    sid = _working(client, shift="日勤", day=12)
+    assert client.post(f"{BASE}/vacancies", json={"date": "2026-02-30", "shift": "日勤", "absent_staff_id": sid}).status_code == 400
+    assert client.get(f"{BASE}/daily/2026-11-ab").status_code == 400
+
+
+def test_rule_values_are_validated_and_locked_rules_cannot_stop(client):
+    absurd = {"id": "r-absurd", "type": "staffing", "label": "夜勤100万人", "strength": "絶対", "shifts": {"ids": ["夜勤"]}, "at_least": 10 ** 6}
+    assert client.post(f"{BASE}/rules", json=absurd).status_code == 422
+    too_many = {**absurd, "at_least": 15}           # 職員16人でも、夜勤に入れる人はそれより少ない
+    assert client.post(f"{BASE}/rules", json=too_many).status_code == 422
+    for bad in ({"id": "b1", "type": "count", "label": "b", "shifts": {}, "at_most": 999},
+                {"id": "b2", "type": "succession", "label": "b", "max_run": 0},
+                {"id": "b3", "type": "balance", "label": "b", "shifts": {}, "max_spread": -1},
+                {"id": "b4", "type": "count", "label": "b", "shifts": {}, "at_least": 5, "at_most": 2}):
+        assert client.post(f"{BASE}/rules", json=bad).status_code == 422, bad
+    r = client.post(f"{BASE}/rules/r-ake/stop", json={"reason": "x"})
+    assert r.status_code == 409 and "止められません" in r.json()["error"]
+    assert "r-ake" in {x["id"] for x in client.get(f"{BASE}/rules").json()["rules"]}
+
+
+def test_user_rule_cap(client, monkeypatch):
+    from care import service
+
+    monkeypatch.setattr(service, "MAX_USER_RULES", 2)
+    mk = lambda i: {"id": f"u{i}", "type": "request", "label": "u", "strength": "できれば", "people": {"ids": ["HDM-001"]},  # noqa: E731
+                    "days": {"dates": [i + 1]}, "shifts": {"ids": ["休"]}, "want": True}
+    assert [client.post(f"{BASE}/rules", json=mk(i)).status_code for i in range(3)] == [201, 201, 409]
+
+
+def test_task_request_rule_can_be_saved_and_is_used_by_daily(client):
+    d0 = client.get(f"{BASE}/daily/2026-11-12").json()
+    bathers = sorted({s["staff_id"] for s in d0["staff"] for i in s["items"] if i["task"] == "bath"})
+    assert bathers
+    who = bathers[0]
+    rule = {"id": "r-task-1", "type": "taskRequest", "label": f"{who} は入浴介助に入れない", "strength": "絶対",
+            "people": {"ids": [who]}, "task": "bath", "from_hour": 0, "to_hour": 24, "want": False}
+    assert client.post(f"{BASE}/rules", json=rule).status_code == 201
+    assert "r-task-1" in {x["id"] for x in client.get(f"{BASE}/rules").json()["daily_rules"]}
+    d1 = client.get(f"{BASE}/daily/2026-11-12").json()
+    assert not any(i["task"] == "bath" for s in d1["staff"] if s["staff_id"] == who for i in s["items"])
+    bad = {**rule, "id": "r-task-2", "from_hour": 20, "to_hour": 10}
+    assert client.post(f"{BASE}/rules", json=bad).status_code == 422
+
+
+def test_new_solve_keeps_absences_and_fills(client):
+    absent, vid, j = _vac(client)
+    c = j["candidates"][0]["staff_id"]
+    o = client.post(f"{BASE}/vacancies/{vid}/offers", json={"staff_id": c}).json()
+    client.post(f"{BASE}/vacancies/{vid}/offers/{o['offer_id']}/respond", json={"status": "accepted"})
+    absent2, vid2, j2 = _vac(client, day=20, shift="夜勤")       # まだ埋まっていない欠員
+    o2 = client.post(f"{BASE}/vacancies/{vid2}/offers", json={"staff_id": j2["candidates"][0]["staff_id"]}).json()
+    s = client.post(f"{BASE}/rosters/2026-11/solve", json={"time_limit": 10, "daily": False}).json()
+    assert s["status"] in ("OPTIMAL", "FEASIBLE") and s["carried_edits"] >= 3
+    cur = client.get(f"{BASE}/rosters/2026-11").json()["current"]
+    assert cur[absent][11] == "" and cur[c][11] == "日勤" and cur[absent2][19] == ""                      # 新しい提案に引き継がれる
+    assert server.svc().repo.vacancy(F, vid)["state"] == "filled"
+    assert server.svc().repo.vacancy(F, vid2)["state"] == "replanned"                                     # 新しい提案で埋まった
+    r = client.post(f"{BASE}/vacancies/{vid2}/offers/{o2['offer_id']}/respond", json={"status": "accepted"})
+    assert r.status_code == 409                                                                           # 古い打診の受諾で人数が過剰にならない

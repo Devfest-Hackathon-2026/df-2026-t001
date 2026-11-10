@@ -1,6 +1,10 @@
 // care-solver-api（CP-SAT・欠員の候補・Gemini・学習）のクライアント。ブラウザから Cloud Run に直接（CORS）呼ぶ。
 // 既存の /api/**（care-api）とは別のサービス。公開デモのため認証は無く、レート制限・利用上限がサーバー側で効く。
-export const SOLVER = (import.meta.env.VITE_SOLVER_URL as string | undefined) ?? 'https://care-solver-api-h5p5nqo3qa-an.a.run.app';
+// 既定は本番の Cloud Run。VITE_SOLVER_URL はローカル開発・scripts/check 用の上書き。
+// 注意：Firebase Hosting の CSP（firebase.json の connect-src）は既定の URL だけを許可しているため、
+// 別の宛先でビルドして Hosting に載せる場合は connect-src も合わせて変えること。
+// （import.meta.env が無い node 実行でも落ちないよう ?. で読む）
+export const SOLVER = (import.meta.env?.VITE_SOLVER_URL as string | undefined) ?? 'https://care-solver-api-h5p5nqo3qa-an.a.run.app';
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public retryAfter?: number) { super(message); }

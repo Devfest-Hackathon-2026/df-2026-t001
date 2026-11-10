@@ -11,7 +11,7 @@ const TIMEOUT_MS = 4000;
 const MAX = 6;
 
 export function aiReasonsEnabled(): boolean {
-  if ((import.meta.env.VITE_AI_REASONS as string | undefined) === 'off') return false;
+  if ((import.meta.env?.VITE_AI_REASONS as string | undefined) === 'off') return false;
   try { if (localStorage.getItem('care-no-reasons') === '1') return false; } catch { /* 読めなくても既定はオン */ }
   return typeof fetch === 'function' && typeof AbortController === 'function';
 }

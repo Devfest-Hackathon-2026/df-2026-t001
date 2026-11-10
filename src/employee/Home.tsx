@@ -11,8 +11,14 @@ export function Home({ s, c }: { s: State; c: Ctx }) {
   const [req, setReq] = useState(false);
   const now = simMin(s);
   const today = s.today;
-  const row = buildDay(s.assignments, today).find((r) => r.staff.id === MY_ID && !r.tail);
+  const mine = buildDay(s.assignments, today).filter((r) => r.staff.id === MY_ID);
+  // 前日からの夜勤（夜勤明け）は、明けの時刻（09:30）までは「今日の勤務」として続きを出す
+  const tail = mine.find((r) => r.tail);
+  const tailEnd = SHIFTS['夜勤'].end - 1440;
+  const onTail = !!tail && now < tailEnd;
+  const row = onTail ? tail : mine.find((r) => !r.tail);
   const a = row?.assignment;
+  const ake = !!tail && !onTail && !(a && a.status !== 'absent'); // 夜勤明け（勤務は終わった）
   const working = !!a && a.status !== 'absent';
   const next = (() => { for (let i = 1; i <= 42; i++) { const d = addDays(today, i); const x = myAssign(s, d); if (x && x.status !== 'absent') return x; } return undefined; })();
   const unread = s.notices.filter((n) => n.to === MY_ID && !n.read);
@@ -28,8 +34,8 @@ export function Home({ s, c }: { s: State; c: Ctx }) {
       {working && a ? (
         <>
           <section class="card">
-            <div class="row spread"><span class="muted">今日の勤務</span><ShiftChip shift={a.shift} full /></div>
-            <div class="big" style="margin-top:4px">{SHIFTS[a.shift].label}</div>
+            <div class="row spread"><span class="muted">{onTail ? `今日の勤務（${fmtMD(a.date)}からの夜勤明け）` : '今日の勤務'}</span><ShiftChip shift={a.shift} full /></div>
+            <div class="big" style="margin-top:4px">{onTail ? `夜勤明け 〜${fmtMin(tailEnd)}` : SHIFTS[a.shift].label}</div>
             <div class="row" style="flex-wrap:wrap;margin-top:8px">
               <span class="chip">担当：{unitName(a.unitId)}</span>
               {brk && <span class="chip">{brk.kind === 'nap' ? '仮眠' : '休憩'} {fmtMin(brk.start)}〜{fmtMin(brk.end)}</span>}
@@ -59,8 +65,8 @@ export function Home({ s, c }: { s: State; c: Ctx }) {
         </>
       ) : (
         <section class="card">
-          <div class="row spread"><span class="muted">今日の勤務</span><span class="chip">{a?.status === 'absent' ? '休み（受付済み）' : '勤務なし'}</span></div>
-          <p class="big" style="margin-top:8px">{a?.status === 'absent' ? 'お休みとして受け付けています' : '今日はお休みです'}</p>
+          <div class="row spread"><span class="muted">今日の勤務</span><span class="chip">{a?.status === 'absent' ? '休み（受付済み）' : ake ? '夜勤明け' : '勤務なし'}</span></div>
+          <p class="big" style="margin-top:8px">{a?.status === 'absent' ? 'お休みとして受け付けています' : ake ? '夜勤明けです。ゆっくり休んでください' : '今日はお休みです'}</p>
           {next && <p class="muted" style="margin-top:4px">次の勤務：{fmtMD(next.date)} {next.shift}（{SHIFTS[next.shift].label}）</p>}
           <div class="week">{Array.from({ length: 7 }, (_, i) => { const d = addDays(today, i); const x = myAssign(s, d); return (<div key={d} class="wk"><span class="small">{DOW_JA[parseYmd(d).getDay()]}</span><b>{+d.slice(8)}</b>{x && x.status !== 'absent' ? <ShiftChip shift={x.shift} /> : <span class="small">休</span>}</div>); })}</div>
         </section>

@@ -6,9 +6,12 @@
 """
 from __future__ import annotations
 
+import time
 from collections import Counter
+from functools import wraps
 from typing import Any, Callable
 
+from .. import guard as rate
 from ..dsl import ALL_KINDS, OFF
 from ..service import ServiceError, Svc
 from ..solver.monthly import WORK_H
@@ -27,6 +30,13 @@ SYSTEM = """あなたは介護施設の勤務表づくりを手伝うアシス�
 - 日付は YYYY-MM-DD でツールに渡す。年が省略されたら、下の「今見ている月」の年を使う。ツールが失敗したら、そのまま失敗したと伝える（日付や数字を推測しない）。"""
 
 
+MAX_STEPS = 4              # Gemini の呼び出しは最大 MAX_STEPS+1 回（最後はツール無しのまとめ）
+MAX_TOOL_CALLS = 8         # 1回の質問で実行するツールの合計（並列の呼び出しも1つずつ数える）
+MAX_SOLVER_CALLS = 2       # そのうち求解・全員の検証を伴うもの
+SOLVER_TOOLS = {"daily_schedule", "find_candidates", "propose_offer"}
+SOLVER_MIN_SEC = 10.0      # チャットの締め切りまでの残りがこれ未満なら、求解のツールは動かさない
+
+
 def system_for(month: str) -> str:
     return f"{SYSTEM}\n今見ている月: {month}（この施設の勤務表の対象月）"
 
@@ -36,8 +46,11 @@ def _clip(s: Any, n: int = 120) -> str:
 
 
 class ChatTools:
-    def __init__(self, svc: Svc, fid: str, month: str, analytics=None) -> None:
+    def __init__(self, svc: Svc, fid: str, month: str, analytics=None, *, ip: str | None = None, deadline: float | None = None) -> None:
         self.svc, self.fid, self.month, self.analytics = svc, fid, month, analytics
+        self.ip, self.deadline = ip, deadline
+        self.calls = 0
+        self.solver_calls = 0
         self.fac = svc.facility(fid)
         self.names = {s.staff_id: s.name for s in self.fac.staff}
         self.proposals: list[dict] = []
@@ -161,8 +174,26 @@ class ChatTools:
         self.proposals.append(p)
         return {k: p[k] for k in ("summary", "preview", "executed")}
 
+    def _limited(self, name: str, fn: Callable[..., Any]) -> Callable[..., Any]:
+        """回数の上限と、求解のツールの同時実行の枠（求解 API と同じセマフォ・分あたりの枠）。"""
+        @wraps(fn)
+        def run(*a, **kw):
+            if self.calls >= MAX_TOOL_CALLS:
+                raise ServiceError(429, "この質問で調べられる回数の上限です。ここまでの結果で答えてください")
+            self.calls += 1
+            if name not in SOLVER_TOOLS:
+                return fn(*a, **kw)
+            if self.solver_calls >= MAX_SOLVER_CALLS:
+                raise ServiceError(429, "この質問で使える求解の回数の上限です。ここまでの結果で答えてください")
+            if self.deadline is not None and self.deadline - time.time() < SOLVER_MIN_SEC:
+                raise ServiceError(503, "時間が足りないため、この調べ物は行いませんでした")
+            self.solver_calls += 1
+            with rate.heavy_slot(self.ip):
+                return fn(*a, **kw)
+        return run
+
     def registry(self) -> dict[str, Callable[..., Any]]:
-        return {n: getattr(self, n) for n in ("facility_info", "roster_summary", "staff_schedule", "who_works", "verify_roster",
+        return {n: self._limited(n, getattr(self, n)) for n in ("facility_info", "roster_summary", "staff_schedule", "who_works", "verify_roster",
                                               "daily_schedule", "list_rules", "list_vacancies", "find_candidates", "acceptance_model_info", "learned_rule_candidates",
                                               "analytics_stats", "propose_edit", "propose_offer")}
 

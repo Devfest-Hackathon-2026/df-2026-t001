@@ -11,6 +11,7 @@ import { Health } from './Health';
 import { Home } from './Home';
 import { Settings } from './Settings';
 import { Shift } from './Shift';
+import { requestMonthOpen } from './Request';
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'home', label: 'ホーム', icon: 'home' }, { id: 'shift', label: 'シフト', icon: 'calendar_month' }, { id: 'health', label: '体調', icon: 'favorite' },
@@ -40,6 +41,7 @@ export function App() {
     readNotice(n.id);
     if (n.link?.startsWith('offer:')) { setNotices(false); setOffer(n.link.slice(6)); }
     else if (n.link === 'health') go('health'); else if (n.link === 'shift') go('shift');
+    else if (n.link === 'dayoff') { requestMonthOpen(); go('shift'); }
   };
 
   return (

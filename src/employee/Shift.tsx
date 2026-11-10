@@ -1,14 +1,14 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import type { State } from '../core/store';
 import { submitRequest } from '../core/store';
-import { MY_ID, SHIFTS, TASKS, TASK_GROUPS, staffById, unitName } from '../core/facility';
+import { MY_ID, SHIFTS, TASKS, TASK_GROUPS, unitName } from '../core/facility';
 import { buildDay } from '../core/roster';
 import { addDays, dow, fmtMD, fmtMin, parseYmd, toYmd, DOW_JA, fmtLong } from '../core/dates';
 import type { RequestKind } from '../core/types';
 import { Icon, Modal } from '../shared/ui';
 import { Ctx, MiniCal, ShiftChip, myAssign } from './common';
 import { myAvail } from './Avail';
-import { MonthCard, MonthRequest } from './Request';
+import { MonthCard, MonthRequest, takeMonthOpen } from './Request';
 
 const REASONS = ['体調不良', '子どもの送迎', '通院', '家族の事情', '私用'];
 
@@ -59,7 +59,8 @@ export function Shift({ s, c }: { s: State; c: Ctx }) {
   const [mode, setMode] = useState<'cal' | 'list'>('cal');
   const [month, setMonth] = useState(s.today.slice(0, 7) + '-01');
   const [day, setDay] = useState<string | null>(null);
-  const [req, setReq] = useState(false);
+  const [req, setReq] = useState(takeMonthOpen);
+  useEffect(() => { const f = () => { if (takeMonthOpen()) setReq(true); }; window.addEventListener('emp-open-month', f); return () => window.removeEventListener('emp-open-month', f); }, []);
   const pr = s.prefs[MY_ID];
   const m0 = parseYmd(month); const nDays = new Date(m0.getFullYear(), m0.getMonth() + 1, 0).getDate();
   const shiftMonth = (n: number) => setMonth(toYmd(new Date(m0.getFullYear(), m0.getMonth() + n, 1)));
@@ -101,7 +102,6 @@ export function Shift({ s, c }: { s: State; c: Ctx }) {
       )}
       {req && <MonthRequest s={s} c={c} onClose={() => setReq(false)} />}
       {day && <DaySheet s={s} date={day} onClose={() => setDay(null)} c={c} />}
-      {void staffById}
     </div>
   );
 }

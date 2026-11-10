@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """本物の Gemini（Vertex AI）での評価。決定的な指標で測る（モデルに採点させない）。
 
-  api/.venv/bin/python api/scripts/eval_ai.py [synth_out_dir] [report.json]
+  solver-api/.venv/bin/python solver-api/scripts/eval_ai.py [synth_out_dir] [report.json]
 
 1. ルール翻訳: 発話 → 下書きの各項目が期待と一致するか。Pro と Flash を比較。無関係な発話を弾けるか。
 2. 説明の言い換え: 事実の検査（fact-lock）を通る割合。

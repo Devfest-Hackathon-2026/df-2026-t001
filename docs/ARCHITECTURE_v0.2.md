@@ -2,11 +2,11 @@
 
 > **この文書は、2026-11-09 時点の計画の記録です。** 実装で変わった点と、実装しなかった点は、末尾の「11. 計画と実際」にまとめています。現在の構成は [README](../README.md) と [ARCHITECTURE_v0.3_cpsat.md](ARCHITECTURE_v0.3_cpsat.md) を参照してください。
 
-対象: GCP `gdgoc-514203` / リポジトリ: 提出用 `Devfest-Hackathon-2026/df-2026-t001`（開発用 `32Lwk/gdgoc-care-connect`）
+対象: GCP `gdgoc-514203` / リポジトリ: 提出用 `Devfest-Hackathon-2026/df-2026-t001`（開発用リポジトリ `32Lwk/gdgoc-care-connect`。CI/CD はこちらで実行）
 v0.1（`ARCHITECTURE.md`）からの差分: **施設・個人ごとに学習が進み、精度と効率が上がる**構成へ拡張。
-当時、このドキュメントは設計のみで、GCP 側は未変更だった。GCP 変更はフェーズごとに承認を得てから実施した。
+当時、このドキュメントは設計のみで、GCP 側は未変更だった。GCP の変更はフェーズごとにチームで確認してから実施した。
 
-## 1. 確定した方針（ユーザー回答）
+## 1. 確定した方針（チームで合意）
 
 | 論点 | 決定 |
 |---|---|
@@ -15,7 +15,7 @@ v0.1（`ARCHITECTURE.md`）からの差分: **施設・個人ごとに学習が�
 | 学習データ | スクリプトで合成（架空のみ、実データは使わない） |
 | 施設数 | 3施設（マルチテナント） |
 | 基礎コード | `gdgoc-care-connect`（Vite/TS） |
-| GCP変更 | フェーズごとに承認 |
+| GCP変更 | フェーズごとにチームで確認して実施 |
 | Geminiの階層 | 重い処理は Pro、軽い処理は Flash |
 | 乱用対策 | IPレート制限 ＋ 予算アラート（通知のみ） |
 | 推論方式 | Pipelinesでカスタム学習 → **バッチ予測**（常時Endpointは持たない） |
@@ -82,7 +82,7 @@ Cloud Run care-api (FastAPI)  ── SA: care-api-sa（最小権限）
 
 | リソース | 備考 |
 |---|---|
-| API有効化 | `aiplatform`, `firestore`, `firebase`, `firebasehosting`, `secretmanager`, `cloudscheduler`, `dlp`, `cloudbuild` ほか（承認後） |
+| API有効化 | `aiplatform`, `firestore`, `firebase`, `firebasehosting`, `secretmanager`, `cloudscheduler`, `dlp`, `cloudbuild` ほか（チームで確認後に有効化） |
 | Firestore (default) | Native / asia-northeast1 |
 | BigQuery | `care_analytics`（events, features, predictions, embeddings, ビュー） |
 | Pub/Sub | `care-events` ＋ BigQuery subscription |

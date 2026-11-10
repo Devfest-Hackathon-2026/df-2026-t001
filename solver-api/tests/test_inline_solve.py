@@ -136,3 +136,11 @@ def test_is_rate_limited_as_heavy(client):
         guard.allow("testclient", "heavy")
     r = client.post(URL, json=_body(time_limit=1))
     assert r.status_code == 429
+
+
+def test_bad_extra_dates_and_oversized_maps_are_422_not_500(client):
+    assert client.post(URL, json=_body(extra={"2026-11-ab": {"日勤": 1}})).status_code == 422
+    assert client.post(URL, json=_body(extra={"2026-02-30": {"日勤": 1}})).status_code == 422
+    assert client.post(URL, json=_body(day_off={f"S{i}": [1] for i in range(500)})).status_code == 422
+    assert client.post(URL, json=_body(unavailable={"EMP-001": list(range(1, 200))})).status_code == 422
+    assert client.post(URL, json=_body(carry_in={f"S{i}": "夜勤" for i in range(500)})).status_code == 422

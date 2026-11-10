@@ -72,7 +72,7 @@ export function employeeSentence(i: EmployeeIntent): string | null {
 // ---- 職員の申請文を Gemini に整えてもらう（選択肢だけを送る。失敗・無効のときは null＝画面側の定型文を使う）
 export interface ComposeIn { kind: '休み' | '遅刻' | '早退' | 'シフト変更'; date: string; shift: string; reason: string; detail?: string }
 export function composeEnabled(): boolean {
-  if (import.meta.env.VITE_AI_COMPOSE === 'off') return false;
+  if (import.meta.env?.VITE_AI_COMPOSE === 'off') return false;
   try { if (localStorage.getItem('care-no-compose') === '1') return false; } catch { /* 保存領域なし */ }
   return true;
 }

@@ -42,4 +42,3 @@ export type Tab = 'home' | 'shift' | 'health' | 'chat' | 'settings';
 export interface Ctx {
   go: (t: Tab) => void; openNotices: () => void; openStaff: (id: string) => void; openResident: (id: string) => void; openUnitResidents: (unitId: string) => void; openUnitStaff: (unitId: string) => void; toast: (m: string) => void;
 }
-export const timeOfStamp = (at: string, _today: string) => at.slice(11, 16);

@@ -1,10 +1,11 @@
-ortools>=9.10
-pydantic>=2.6
-fastapi>=0.115
-uvicorn[standard]>=0.34
-google-cloud-firestore>=2.20
-google-cloud-pubsub>=2.27
-google-genai>=1.0
-google-cloud-dlp>=3.20
-google-cloud-bigquery>=3.20
-google-cloud-storage>=2.16
+# 再現できるビルドのため、動作確認した版に固定する（solver-api/.venv の pip freeze, 2026-11-10）
+ortools==9.15.6755
+pydantic==2.14.3
+fastapi==0.162.2
+uvicorn[standard]==0.54.0
+google-cloud-firestore==2.34.1
+google-cloud-pubsub==2.43.0
+google-genai==3.0.0
+google-cloud-dlp==3.40.0
+google-cloud-bigquery==3.47.0
+google-cloud-storage==3.17.1

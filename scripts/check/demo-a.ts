@@ -1,5 +1,7 @@
 // デモシナリオ(d02-d05)の headless 確認。
 // 実行: npx esbuild scripts/check/demo-a.ts --bundle --platform=node --format=esm --outfile=/tmp/demo-a.mjs && node /tmp/demo-a.mjs
+// 外部 API（solver-api）には接続せず、画面側の代替処理で確認する（結果を決定的にするため）
+(globalThis as any).fetch = async () => { throw new Error('offline (headless check)'); };
 import * as S from '../../src/core/store';
 import { MY_ID, staffById } from '../../src/core/facility';
 import { adjustChecks } from '../../src/leader/Delegate';
@@ -17,6 +19,8 @@ const rq = st().requests[0];
 ok(!!st().notices.find((n) => n.to === 'leader' && n.kind === 'request' && n.title.includes('休み')), 'd02 要対応(leader notice kind=request)が出る');
 // d03: 承認して任せる
 S.decideRequest(rq.id, true, true);
+// 任せた後の打診計画は非同期（API → 失敗時は画面側の代替）で決まるので、確定を待つ
+await new Promise((r) => setTimeout(r, 300));
 const v = st().vacancies.find((x) => x.date === '2026-11-20' && x.shift === '夜勤' && x.fromAssignmentId);
 console.log('vac', v?.id, 'mode', v?.auto?.mode, 'queue', v?.auto?.queue.map(nm).join('>'));
 ok(!!st().notices.find((n) => n.to === 'leader' && n.link === `autopilot:${v!.id}`), 'd03 autopilot:<id> の通知がある');

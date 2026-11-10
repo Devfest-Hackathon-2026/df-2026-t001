@@ -169,6 +169,7 @@ function CellModal({ s, plan, month, staffId, date, onClose, onDone }: { s: Stat
     if (!canWork(st, shift)) warns.push(`${st.name}さんは${shift}に入れません（勤務可能な勤務帯・退勤上限）`);
     if (wantOff) warns.push('本人の希望休の日です');
     if (plan.draft.some((a) => a.staffId === staffId && a.shift === '夜勤' && a.date === addDays(date, -1))) warns.push('前日が夜勤のため、夜勤明けの日です');
+    if (shift === '夜勤' && plan.draft.some((a) => a.staffId === staffId && a.date === addDays(date, 1) && a.status !== 'absent')) warns.push('翌日（夜勤明けの日）に勤務があります');
     if (displaced) warns.push(`いまの担当 ${staffById(displaced.staffId).name}さんは、この枠から外れます`);
   }
   const before = monthStats(plan.draft, `${month}-01`).find((x) => x.staffId === staffId)?.warnings.map((w) => w.text) ?? [];

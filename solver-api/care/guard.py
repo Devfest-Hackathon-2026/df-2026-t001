@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import threading
+from contextlib import contextmanager
 import time
 from collections import defaultdict, deque
 
@@ -33,12 +34,33 @@ def client_ip(headers, peer: str | None) -> str:
 def is_heavy(method: str, path: str) -> bool:
     """CPU を使う呼び出し（求解・組み直し・欠員登録・日次・候補の順位付け）。"""
     if method == "POST":
-        return path.endswith(("/solve", "/solve-inline", "/replan", "/replan-inline", "/vacancies"))
+        return path.endswith(("/solve", "/solve-inline", "/replan", "/replan-inline", "/vacancies", "/rank-candidates"))
     return "/daily/" in path or path.endswith("/candidates")
 
 
+AI_PATHS = ("/translate", "/explain", "/chat", "/plan-intent", "/leader-intent", "/employee-intent", "/employee-compose", "/candidate-reasons")
+
+
 def is_ai(method: str, path: str) -> bool:
-    return method == "POST" and path.endswith(("/translate", "/explain", "/chat", "/plan-intent", "/leader-intent", "/employee-intent"))
+    return method == "POST" and path.endswith(AI_PATHS)
+
+
+@contextmanager
+def heavy_slot(ip: str | None = None):
+    """同期コード（AI の説明・チャットのツール）から求解を呼ぶときの入口。server.heavy と同じセマフォを使い、
+    ip があれば heavy の分あたりの枠も1つ消費する。空きが無ければ待たずに 503 / 429。"""
+    from .service import ServiceError
+
+    if ip is not None:
+        ok, wait = allow(ip, "heavy")
+        if not ok:
+            raise ServiceError(429, f"求解の呼び出しが多すぎます。{wait}秒ほど待ってから再実行してください")
+    if not slots.acquire(True, QUEUE_WAIT):
+        raise ServiceError(503, "求解が混み合っています。少し待ってから再実行してください")
+    try:
+        yield
+    finally:
+        slots.release()
 
 
 def allow(ip: str, heavy: bool | str, now: float | None = None) -> tuple[bool, int]:

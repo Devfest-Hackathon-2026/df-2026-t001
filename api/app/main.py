@@ -2,13 +2,20 @@ import time
 from collections import defaultdict, deque
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from . import ai, analytics, auth, config, events, guard, rules
+from . import auth, config, events, guard
 from .store import make_store
 
 app = FastAPI(title="care-api", docs_url=None, redoc_url=None, openapi_url=None)
 store = make_store()
+
+
+def client_ip(request: Request) -> str:
+    # 末尾はGoogleのフロントエンドが付与した値（クライアントが偽装できない）
+    return (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "?")).split(",")[-1].strip()
+
 
 # 簡易レート制限（インスタンス単位・IPあたり/分）。公開デモの暴走対策の最低限。
 _hits: dict[str, deque] = defaultdict(deque)
@@ -17,8 +24,7 @@ _hits: dict[str, deque] = defaultdict(deque)
 @app.middleware("http")
 async def rate_limit(request: Request, call_next):
     if config.RATE_LIMIT_PER_MIN and request.url.path.startswith("/api/") and request.url.path != "/api/healthz":
-        # 末尾はGoogleのフロントエンドが付与した値（クライアントが偽装できない）
-        ip = (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "?")).split(",")[-1].strip()
+        ip = client_ip(request)
         now = time.time()
         q = _hits[ip]
         while q and now - q[0] > 60:
@@ -38,48 +44,97 @@ async def security_headers(request: Request, call_next):
     return resp
 
 
-def _bounded(*objs) -> None:
-    """AI入力のサイズ・内容の上限（プロンプト肥大化と不正入力の防止）。"""
-    import json as _j
+class BodyLimit:
+    """本文サイズの上限。Content-Length を先に見て、無い（チャンク転送）場合も読みながら上限で打ち切る（413）。
+    解析前に止めるので、巨大な本文でメモリ・CPUを消費させられない。"""
 
-    for o in objs:
-        if len(_j.dumps(o, ensure_ascii=False)) > 12000:
-            raise HTTPException(413, "入力が大きすぎます")
-        guard._walk(o, 0, strict=False)
+    def __init__(self, app, limit: int | None = None) -> None:
+        self.app = app
+        self.limit = limit
+
+    async def _too_large(self, send) -> None:
+        body = '{"detail":"データが大きすぎます"}'.encode()
+        await send({"type": "http.response.start", "status": 413, "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]})
+        await send({"type": "http.response.body", "body": body})
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["method"] in ("GET", "HEAD", "OPTIONS"):
+            return await self.app(scope, receive, send)
+        limit = self.limit if self.limit is not None else config.MAX_BODY_BYTES
+        for k, v in scope.get("headers", []):
+            if k == b"content-length":
+                try:
+                    if int(v) > limit:
+                        return await self._too_large(send)
+                except ValueError:
+                    return await self._too_large(send)
+        chunks, total, more = [], 0, True
+        while more:
+            msg = await receive()
+            if msg["type"] == "http.disconnect":
+                return
+            b = msg.get("body", b"")
+            total += len(b)
+            if total > limit:
+                return await self._too_large(send)
+            chunks.append(b)
+            more = msg.get("more_body", False)
+        body, sent = b"".join(chunks), False
+
+        async def replay():
+            nonlocal sent
+            if not sent:
+                sent = True
+                return {"type": "http.request", "body": body, "more_body": False}
+            return await receive()
+
+        return await self.app(scope, replay, send)
+
+
+app.add_middleware(BodyLimit)
 
 
 @app.get("/api/healthz")
 def healthz():
-    return {"ok": True, "store": config.STORE_BACKEND, "ai": config.AI_ENABLED, "pubsub": bool(config.PUBSUB_TOPIC)}
+    return {"ok": True, "store": config.STORE_BACKEND, "pubsub": bool(config.PUBSUB_TOPIC)}
 
 
-# 状態同期（リーダー画面と従業員画面が同じ vacancyId を共有する）
-class StatePatch(BaseModel):
-    patch: dict = Field(default_factory=dict)  # 例: {"flow": {...}, "monthlySchedule": {...}}
+# 状態同期（リーダー画面と従業員画面が同じ状態を共有する）
+class StatePut(BaseModel):
+    base: int = Field(ge=0)  # クライアントが最後に同期したサーバーのバージョン
+    app: dict
+
+
+def _health_status(h: dict) -> str:
+    temp = h.get("temp")
+    hot = isinstance(temp, (int, float)) and not isinstance(temp, bool) and temp >= 37.5
+    return "consult" if h.get("consult") or h.get("symptoms") or hot else "normal"
+
+
+def _by_id(items) -> dict:
+    return {x["id"]: x for x in (items or []) if isinstance(x, dict) and isinstance(x.get("id"), str)}
 
 
 def _tracked_changes(old: dict, new: dict) -> list[tuple[str, dict, str | None]]:
-    """業務上意味のある変化をイベント化する。"""
+    """業務上意味のある変化をイベント化する。old は保存済みの現在の状態、new は排他制御を通って確定した状態。
+    （古い状態の再送はバージョン不一致で弾かれ、クライアント側でマージされるため、ここに来る差分は新しい遷移のみ）"""
+    oa, na = old.get("app") or {}, new.get("app") or {}
+    if not oa:
+        return []  # 初回の登録・初期化直後の初期状態はイベントにしない
+    on, nn = oa.get("now"), na.get("now")
+    if isinstance(on, str) and isinstance(nn, str) and nn < on:
+        return [("demo_reset", {}, None)]  # デモの「最初からやり直す」（模擬時計が巻き戻る）。個別の遷移は記録しない
     out = []
-    of, nf = old.get("flow", {}), new.get("flow", {})
-    vid = (nf.get("vacancy") or {}).get("id")
-    ov, nv = of.get("vacancy", {}), nf.get("vacancy", {})
-    if ov.get("status") != nv.get("status") and nv.get("status"):
-        out.append(("vacancy_status_changed", {"from": ov.get("status"), "to": nv.get("status")}, vid))
-    for key, name in (("offer", "offer"), ("posting", "posting")):
-        o, n = of.get(key, {}), nf.get(key, {})
-        for k, v in n.items():
-            if isinstance(v, bool) and v and not o.get(k):
-                out.append((f"{name}_{k}", {}, vid))
-    ov_map = {v.get("id"): v.get("state") for v in old.get("app", {}).get("vacancies", [])}
-    for v in new.get("app", {}).get("vacancies", []):
-        if v.get("id") in ov_map and ov_map[v["id"]] != v.get("state"):
-            out.append(("vacancy_status_changed", {"from": ov_map[v["id"]], "to": v.get("state")}, v.get("id")))
-        elif v.get("id") not in ov_map and old.get("app"):
-            out.append(("vacancy_created", {"state": v.get("state")}, v.get("id")))
-    oh, nh = of.get("health", {}), nf.get("health", {})
-    if nh.get("submitted") and not oh.get("submitted"):
-        out.append(("health_submitted", {"status": nh.get("status")}, None))
+    ov = _by_id(oa.get("vacancies"))
+    for vid, v in _by_id(na.get("vacancies")).items():
+        if vid not in ov:
+            out.append(("vacancy_created", {"state": v.get("state")}, vid))
+        elif ov[vid].get("state") != v.get("state") and v.get("state"):
+            out.append(("vacancy_status_changed", {"from": ov[vid].get("state"), "to": v.get("state")}, vid))
+    oh = _by_id(oa.get("health"))
+    for hid, h in _by_id(na.get("health")).items():
+        if hid not in oh:  # 体調チェックは提出ごとに新しい id（store.ts submitHealth）
+            out.append(("health_submitted", {"status": _health_status(h)}, None))
     return out
 
 
@@ -92,108 +147,26 @@ def get_state(since: int = -1, uid: str = Depends(auth.require_user)):
 
 
 @app.put("/api/state")
-def put_state(body: StatePatch, uid: str = Depends(auth.require_user)):
-    guard.validate_patch(body.patch)
-    old, new, ver = store.patch(body.patch)
-    for et, payload, vid in _tracked_changes(old, new):
+def put_state(body: StatePut, request: Request, uid: str = Depends(auth.require_user)):
+    guard.consume_write(client_ip(request))
+    app_state = guard.validate_app(body.app)
+    res = store.put_app(app_state, body.base)
+    if not res.ok:
+        # 他の端末が先に更新した。現在の状態を返し、クライアントが3方向マージして再送する
+        return JSONResponse({"detail": "conflict", "version": res.version, "data": res.old}, status_code=409)
+    for et, payload, vid in _tracked_changes(res.old, res.new):
         events.emit(et, payload, vid)
-    return {"version": ver}
+    return {"version": res.version}
 
 
 @app.post("/api/state/reset")
-def reset_state(uid: str = Depends(auth.require_user)):
+def reset_state(request: Request, uid: str = Depends(auth.require_user)):
+    """運用・デモ用の初期化。専用ヘッダー必須＋全体クールダウン＋IPごとの上限。"""
+    if request.headers.get(config.RESET_HEADER) != config.RESET_HEADER_VALUE:
+        raise HTTPException(403, "初期化はデモメニューからのみ実行できます")
+    guard.consume_reset(client_ip(request))
     events.clear_local()
     return {"version": store.reset()}
-
-
-# AI
-class MonthlyReq(BaseModel):
-    year: int = Field(2026, ge=2024, le=2035)
-    month: int = 11
-
-
-class CandidatesReq(BaseModel):
-    absentEmpId: str | None = Field(None, max_length=20)
-    requiredSkills: list[str] = Field(default_factory=lambda: [rules.NIGHT_REQUIRED_SKILL], max_length=5)
-    top: int = 5
-
-
-class HealthReq(BaseModel):
-    checks: list[dict] = Field(default_factory=list)
-
-
-class ChatReq(BaseModel):
-    message: str = Field(min_length=1, max_length=1000)
-    staff: dict[str, str] = Field(default_factory=dict, max_length=80)  # 職員ID→表示名（架空名）
-
-
-class ExplainReq(BaseModel):
-    vacancy: dict = Field(default_factory=dict)
-    candidates: list[dict] = Field(default_factory=list, max_length=8)
-
-
-class PlanReq(BaseModel):
-    plan: dict = Field(default_factory=dict)
-
-
-@app.post("/api/ai/monthly-plan")
-def ai_monthly(body: MonthlyReq, uid: str = Depends(auth.require_user)):
-    guard.consume_ai(uid)
-    if not (1 <= body.month <= 12):
-        raise HTTPException(422, "month は1〜12")
-    return ai.monthly_plan(body.year, body.month)
-
-
-@app.post("/api/ai/candidates")
-def ai_candidates(body: CandidatesReq, uid: str = Depends(auth.require_user)):
-    guard.consume_ai(uid)
-    return ai.priority_candidates(body.absentEmpId, body.requiredSkills, min(max(body.top, 1), 10))
-
-
-@app.post("/api/ai/explain-candidates")
-def ai_explain(body: ExplainReq, uid: str = Depends(auth.require_user)):
-    _bounded(body.vacancy, body.candidates)
-    guard.consume_ai(uid)
-    return ai.explain_candidates(body.vacancy, body.candidates)
-
-
-@app.post("/api/ai/plan-review")
-def ai_plan(body: PlanReq, uid: str = Depends(auth.require_user)):
-    _bounded(body.plan)
-    guard.consume_ai(uid)
-    return ai.plan_review(body.plan)
-
-
-@app.post("/api/ai/health-insight")
-def ai_health(body: HealthReq, uid: str = Depends(auth.require_user)):
-    guard.consume_ai(uid)
-    return ai.health_insight(body.checks[:200])
-
-
-@app.post("/api/ai/chat")
-def ai_chat(body: ChatReq, uid: str = Depends(auth.require_user)):
-    guard.consume_ai(uid)
-    data, _ = store.get()
-    staff = {k[:20]: v[:30] for k, v in body.staff.items() if isinstance(k, str) and isinstance(v, str)}
-    return ai.chat(body.message, data, staff)
-
-
-@app.get("/api/analytics/summary")
-def analytics_summary(uid: str = Depends(auth.require_user)):
-    guard.consume_ai(uid)
-    return ai.analytics_summary()
-
-
-@app.get("/api/analytics/stats")
-def analytics_stats(uid: str = Depends(auth.require_user)):
-    return analytics.stats()
-
-
-@app.get("/api/seed/{name}")
-def seed(name: str, uid: str = Depends(auth.require_user)):
-    if name not in {"employees", "residents", "facilityConfig", "candidates", "residentCoverage"}:
-        raise HTTPException(404)
-    return rules.load_seed(name)
 
 
 # ローカル開発用: SERVE_STATIC=.. で静的画面も同一オリジンで配信（本番はFirebase Hosting）
