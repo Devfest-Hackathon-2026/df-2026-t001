@@ -1,8 +1,10 @@
-# 仮名（介護夜勤欠員）アーキテクチャ設計 v0.2 — 学習する施設特化シフト
+# 助っ人ケア（介護夜勤欠員）アーキテクチャ設計 v0.2 — 学習する施設特化シフト（歴史的な計画）
 
-対象: GCP `gdgoc-514203` / リポジトリ `32Lwk/gdgoc-care-connect`
+> **この文書は、2026-11-09 時点の計画の記録です。** 実装で変わった点と、実装しなかった点は、末尾の「11. 計画と実際」にまとめています。現在の構成は [README](../README.md) と [ARCHITECTURE_v0.3_cpsat.md](ARCHITECTURE_v0.3_cpsat.md) を参照してください。
+
+対象: GCP `gdgoc-514203` / リポジトリ: 提出用 `Devfest-Hackathon-2026/df-2026-t001`（開発用 `32Lwk/gdgoc-care-connect`）
 v0.1（`ARCHITECTURE.md`）からの差分: **施設・個人ごとに学習が進み、精度と効率が上がる**構成へ拡張。
-**このドキュメントは設計のみで、GCP側は未変更。** GCP変更はフェーズごとに承認を得てから実施する。
+当時、このドキュメントは設計のみで、GCP 側は未変更だった。GCP 変更はフェーズごとに承認を得てから実施した。
 
 ## 1. 確定した方針（ユーザー回答）
 
@@ -21,7 +23,7 @@ v0.1（`ARCHITECTURE.md`）からの差分: **施設・個人ごとに学習が�
 | API言語 | Python FastAPI |
 | `nurse-shift` | 触らず残置 |
 | Firebase | `gdgoc-514203` に追加してよい（P0で実施） |
-| Cloudflare | 残す（保険） |
+| Cloudflare | 残す（保険）→ のちに廃止し、`care.yutok.dev` は Firebase Hosting に直結（§11） |
 | 可視化 | アプリ内ダッシュボード ＋ Looker Studio 埋込 |
 | 安全対策 | 適度（Sensitive Data Protection、Geminiセーフティ設定、Gen AI評価） |
 
@@ -84,7 +86,7 @@ Cloud Run care-api (FastAPI)  ── SA: care-api-sa（最小権限）
 | Firestore (default) | Native / asia-northeast1 |
 | BigQuery | `care_analytics`（events, features, predictions, embeddings, ビュー） |
 | Pub/Sub | `care-events` ＋ BigQuery subscription |
-| Cloud Run `care-api` | asia-northeast1、min 0 / max 3、同時実行80 |
+| Cloud Run `care-api` | asia-northeast1、min 0 / max 3、同時実行80（実際の同時実行は 40。§11） |
 | Vertex AI Pipelines / Model Registry | 週次パイプライン、バッチ予測（Endpointなし） |
 | Cloud Scheduler | 週次の学習ジョブ起動 |
 | Artifact Registry | 既存 `cloud-run-source-deploy` を流用 |
@@ -92,7 +94,7 @@ Cloud Run care-api (FastAPI)  ── SA: care-api-sa（最小権限）
 | Looker Studio | BigQueryビューを接続、ダッシュボード埋込 |
 | Budget alert | 通知のみ |
 
-既存の `nurse-shift` は変更しない。Cloudflare（`care.yutok.dev`）は維持する。
+既存の `nurse-shift` は変更しない。Cloudflare（`care.yutok.dev`）は、計画では維持するとしていたが、のちに廃止した（§11）。
 IaC は Terraform、状態は GCS バケット `gdgoc-514203-tfstate`。
 
 ## 7. 合成データ（`scripts/synth/`）
@@ -126,7 +128,7 @@ IaC は Terraform、状態は GCS バケット `gdgoc-514203-tfstate`。
 | Cloud Scheduler、Looker Studio | ほぼ$0 | 無料枠内 |
 | Gemini（Pro/Flash併用） | v0.1の試算に準ずる | 文脈キャッシュで反復入力を削減 |
 
-追加は合計およそ $5〜15。**単価は公式の価格表で再確認すること**（未検証の概算）。
+追加は合計およそ $5〜15。**単価は公式の価格表で再確認すること**（計画時の概算で、単価は確認していない）。
 
 ## 10. リスク
 
@@ -135,3 +137,19 @@ IaC は Terraform、状態は GCS バケット `gdgoc-514203-tfstate`。
 - 合成データで学習した効果は「デモ上の再現」であり、実運用の精度を示すものではない。説明資料にその旨を明記する。
 - 公開エンドポイントのAI・BQ呼び出しは課金増の余地がある。レート制限と予算アラートで抑える。
 - Vertex AI の名称・モデルID・機能は変わる可能性があるため、実装時に公式ドキュメントで確認する。
+
+## 11. 計画と実際（2026-11-10 時点）
+
+**そのとおり実装したもの**: OR-Tools CP-SAT での月次・日次の求解、Gemini（重い処理は Pro、軽い処理は Flash）、Sensitive Data Protection、IP レート制限、3 施設の合成データ、Vertex AI Pipelines による週次の学習（月曜 03:00 JST）と Model Registry、評価ゲート（基準に勝てないモデルは昇格しない）、Terraform と WIF による鍵なしのデプロイ。
+
+**変えたもの**:
+
+| 計画 | 実際 |
+|---|---|
+| 推論は「バッチ予測 → BigQuery `predictions.*`」 | 登録した champion モデルを API が GCS から読み込み、純 Python で採点する（Endpoint なし）。パイプラインは out-of-fold の予測を `care_ml.offer_scores` に書き、較正の監視に使う |
+| 週次の起動は Cloud Scheduler | Vertex AI Pipelines の `PipelineJobSchedule`（`care-learn-weekly`） |
+| API は Cloud Run `care-api` に載せる | 最適化ソルバーと AI は新しい Cloud Run `care-solver-api` に置いた。`care-api` は画面状態の同期用に残した |
+| `care-api` の同時実行 80 | 40 |
+| Cloudflare は維持 | 廃止 |
+
+**実装していないもの（見送り）**: BQML のベースライン比較、BigQuery の `VECTOR_SEARCH`（類似ケース検索）、Gemini の文脈キャッシュ、Vertex AI の Gen AI 評価サービス、欠員需要の予測、施設・個人プロフィールの Gemini 記憶、Looker Studio の埋め込み、予算アラート（課金アカウントの権限がなく作成できなかった）。締切までの時間を考え、決定的な指標による評価とアプリ内の画面を優先した。

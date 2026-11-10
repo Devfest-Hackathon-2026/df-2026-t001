@@ -485,7 +485,7 @@ export function respondOffer(vacancyId_: string, staffId: string, accept: boolea
 }
 export function assignStaff(vacancyId_: string, staffId: string, source: Assignment['source'] = 'leader') { set((s) => (vac(s, vacancyId_) ? fillS(s, vacancyId_, staffId, source) : {})); }
 
-// 求人掲載（AIが作った求人文をリーダーが承認。モックのため実際の掲載・外部送信はしない）
+// 求人掲載（求人文は定型文。既定は自動で掲載し、設定で承認制にもできる。画面上の再現で、実際の掲載・外部送信はしない）
 export function approveJobPost(id: string, text: string, reward: string) {
   set((s) => { const v = vac(s, id); if (!v) return {}; let t = patchV(s, id, (x) => ({ ...x, state: 'posted', jobPost: { reward, text, status: 'posted', postedAt: s.now } })); t = autoS(t, id, { mode: 'posted' }); t = logS(t, id, 'リーダーが求人掲載を承認しました', 'ok'); return t; });
 }

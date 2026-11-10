@@ -41,7 +41,7 @@
 | 学習AI（CP-SAT・応諾予測・Gemini） | リーダー画面の左のナビ **「学習AI」**（スマホ幅では「その他」） |
 | API（Swagger） | https://care-solver-api-h5p5nqo3qa-an.a.run.app/api/docs |
 
-**通しで見る（約 3 分）**: 従業員画面の「シフト」で「休み」と理由を送る → リーダー画面のホーム「要対応」で「承認して、シフト作成君に任せる」を押す → 打診が順に進む（時刻は実時間で進み、右上「デモ」の「+30分」「+2時間」で早送りもできます）→ 従業員画面で打診に「入れる」と返信 → 欠員が埋まり、日次・月次が更新され、休んだ職員にも通知が届く。終わったら「デモ」から架空データを初期状態に戻せます。
+**通しで見る（約 3 分）**: 従業員画面の「チャット」→「シフト作成君（AI）」で「休み」→ 日付 → 理由（例: 子どもの熱）を選び、「シフト作成君に送る」→「この内容で反映」を押す → リーダー画面のホーム「要対応」で「承認して、シフト作成君に任せる」を押す → 打診が順に進む（時刻は実時間で進み、右上「デモ」の「+30分」「+2時間」で早送りもできます）→ 従業員画面で打診に「入れる」と返信 → 欠員が埋まり、日次・月次が更新され、休んだ職員にも通知が届く。終わったら「デモ」から架空データを初期状態に戻せます。
 
 **「学習AI」タブでできること**:
 
@@ -106,8 +106,8 @@ npm install && npm run dev        # http://localhost:5173 （左のナビ「学�
 ```
 
 デプロイ・学習パイプライン・評価の手順: [solver-api/README.md](solver-api/README.md)、[solver-api/pipelines/README.md](solver-api/pipelines/README.md)。
-インフラ: [infra/](infra/)（Terraform）。CI/CD の定義: [.github/workflows/](.github/workflows/)（この提出用リポジトリでは Actions が使えないため、開発用リポジトリで稼働）。
-設計と P0〜P5 の結果（測定値・限界・既知の不具合の修正記録）: [docs/ARCHITECTURE_v0.3_cpsat.md](docs/ARCHITECTURE_v0.3_cpsat.md)。
+インフラ: [infra/](infra/)（Terraform。適用済み）。`api/` は、リーダー画面と従業員画面の状態を同期する Cloud Run `care-api`（Hosting の `/api/**`）で、最適化ソルバー・AI・学習は `solver-api/` にある。CI/CD の定義: [.github/workflows/](.github/workflows/)（この提出用リポジトリでは Actions が使えないため、開発用リポジトリで稼働）。
+設計と P0〜P6 の結果（測定値・限界・既知の不具合の修正記録）: [docs/ARCHITECTURE_v0.3_cpsat.md](docs/ARCHITECTURE_v0.3_cpsat.md)。
 
 ## 注意・出典
 

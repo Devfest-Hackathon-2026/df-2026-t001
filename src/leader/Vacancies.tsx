@@ -107,7 +107,7 @@ function ManualPanel({ s, v, cands, plans, pv, setPv, pp, setPp, openStaff }: { 
         {ng.length > 0 && <details style="margin-top:12px"><summary class="muted">打診できない職員（{ng.length}名）</summary><div class="stack" style="gap:4px;margin-top:8px">{ng.map((c) => <div key={c.staff.id} class="row spread small" style="color:var(--tx)"><span>{c.staff.name}</span><span class="chip">{c.blocked}</span></div>)}</div></details>}
       </details>
 
-      <section class="card"><h3 class="h3">求人掲載（手動）</h3><p class="small">外部求人は接続予定です。実際の投稿・決済はしません。</p>
+      <section class="card"><h3 class="h3">求人掲載（手動）</h3><p class="small">求人の掲載は画面上の再現です。外部の求人サービスには接続せず、実際の投稿・決済はしません。</p>
         {(v.state === 'open' || v.state === 'offering') && <div class="stack" style="margin-top:8px">
           <div class="field"><label>条件（対価）</label><input class="input" value={reward} onInput={(e) => setReward((e.target as HTMLInputElement).value)} /></div>
           <button class="btn tonal" onClick={() => postJob(v.id, reward)}>この内容で掲載する</button></div>}

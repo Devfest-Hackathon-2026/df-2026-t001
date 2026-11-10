@@ -1,5 +1,5 @@
-// 「シフト作成君」：自然文 → 構造化 → 正規化 → 影響チェック（モック／ルールベース）
-// 将来は Gemini（Gemini Enterprise Agent Platform）の出力を同じ AiItem スキーマで差し替える。
+// 「シフト作成君」：自然文 → 構造化 → 正規化 → 影響チェック（ルールベース）
+// ルールで読み取れない言い回しは、Gemini の分類（aiintent.ts）の出力を同じ AiItem スキーマに通して検証してから使う。
 import type { AiItem, AiProposal, Assignment, ShiftCode, RequestKind } from './types';
 import { addDays, dow, fmtMD, parseYmd, toYmd, fmtHM, toMin, DOW_JA } from './dates';
 import { coverage, buildDay } from './roster';

@@ -1,18 +1,20 @@
-# 仮名（介護夜勤欠員）アーキテクチャ設計 v0.1
+# 助っ人ケア（介護夜勤欠員）アーキテクチャ設計 v0.1（歴史的な記録）
 
-対象: GCP `gdgoc-514203`（#268178492831）/ リポジトリ `32Lwk/gdgoc-care-connect`
-前提: デモ用の架空データのみ・一般公開・予算上限なし（ユーザー確認済み）。**このドキュメントは設計のみで、GCP側は未変更。**
+> **この文書は、2026-11-09 時点の初期設計の記録です。** 以降の v0.2・v0.3 と実装で、内容は大きく変わりました。現在の構成は [README](../README.md) と [ARCHITECTURE_v0.3_cpsat.md](ARCHITECTURE_v0.3_cpsat.md) を参照してください。本文の「現状」「未決事項」「段階計画」「リスク」は当時の記述で、実際の結果は末尾の「8. 実際の結果」にまとめています。
 
-## 1. 現状（調査結果）
+対象: GCP `gdgoc-514203`（#268178492831）/ リポジトリ: 提出用 `Devfest-Hackathon-2026/df-2026-t001`（開発用 `32Lwk/gdgoc-care-connect`）
+前提: デモ用の架空データのみ・一般公開・予算上限なし（ユーザー確認済み）。当時、このドキュメントは設計のみで、GCP 側は未変更だった。
+
+## 1. 当時の現状（調査結果）
 
 | 項目 | 内容 |
 |---|---|
 | プロダクト | 介護施設の夜勤欠員1件を `vacancyId` で「打診→掲載→充足」まで閉じる。画面は リーダー(`index.html`) と 従業員スマホ(`employee.html`) |
 | 実装 | 静的HTML/JS（`assets/js/app.js` 約1.6k行、`data.js` 架空35名、`flow-state.js`）。状態は `localStorage` のみ＝**サーバーもDBも無い** |
-| 現行配信 | Cloudflare Workers（`care.yutok.dev`）。`firebase.json` は準備済みだが未デプロイ |
-| GCP | Cloud Run `nurse-shift`（別メンバー作成、IAM空=非公開）、Artifact Registry、Cloud Storage(ソースzip)。Firestore/Compute/Cloud SQL は未有効。Vertex AI(`aiplatform`)も**未有効** |
+| 当時の配信 | Cloudflare Workers（`care.yutok.dev`）。`firebase.json` は準備済みだが未デプロイだった（のちに Cloudflare を廃止し、Firebase Hosting に移した。末尾「ドメイン」） |
+| GCP | Cloud Run `nurse-shift`（別メンバー作成、IAM空=非公開）、Artifact Registry、Cloud Storage(ソースzip)。Firestore/Compute/Cloud SQL は有効化されておらず、Vertex AI(`aiplatform`)も当時は無効だった（のちに必要なものを有効化。§8） |
 | 期限 | **コードフリーズ・提出 2026-11-10 19:00 JST**（今日は11-09）。必須: Firebase Hosting または Cloud Run 等でデモ公開 |
-| 注意 | `nurse-shift` は看護師向けの別物の可能性。本製品は介護士が主眼（PROJECT.md） |
+| 注意 | `nurse-shift` は看護師向けの別物の可能性。本製品は介護士が主眼 |
 
 ## 2. 目標アーキテクチャ
 
@@ -54,7 +56,7 @@
 | Firestore DB `(default)` | 新規 | Native / asia-northeast1 |
 | BigQuery dataset `care_analytics`（asia-northeast1） | 新規 | `events`、分析ビュー |
 | Pub/Sub topic `care-events` + BQ subscription | 新規 | |
-| Cloud Run `care-api` | 新規 | asia-northeast1、min 0 / max 10、同時実行80 |
+| Cloud Run `care-api` | 新規 | asia-northeast1、min 0 / max 10、同時実行80（計画。実際は max 3・同時実行 40。§8） |
 | Service Account `care-api-sa` | 新規 | `datastore.user`, `aiplatform.user`, `pubsub.publisher`, `bigquery.dataViewer/jobUser`（データセット限定） |
 | Service Account `gh-deployer` + WIF Pool | 新規 | GitHubの `32Lwk/gdgoc-care-connect` のみ許可 |
 | Artifact Registry `cloud-run-source-deploy` | 既存 | 流用 |
@@ -82,18 +84,33 @@ IaC は Terraform（`infra/`）。既存リソースは `import` し、状態は
 
 優先順位: **P1 → P2(①②) → P4簡易 → P3 → P2残り**。時間が足りなければP3のインサイトとP2③を縮小。
 
-## 6. 未決事項（要回答）
+## 6. 当時の未決事項（回答済み。§8 の表）
 1. `nurse-shift`（別メンバー作成・非公開）を削除/置換/残置どれにするか
 2. API言語（Python FastAPI 推奨 / Node）
 3. Firebaseを既存GCPプロジェクトに追加してよいか（Hosting用、課金プロジェクトに紐付く）
 4. 今夜からのGCP変更（API有効化・リソース作成）を段階承認で進めるか
 5. Cloudflare（`care.yutok.dev`）は残す/止める
 
-## 7. リスク
+## 7. 当時のリスク
 - 期限まで約1日。範囲が広いため、P1完了までは機能追加を止める。
 - 公開エンドポイントでGemini/BQが叩ける設計は課金増・悪用の余地あり（ユーザー方針で上限なし）。最低限のレート制限と予算通知は低コストで推奨。
 - `data.js` に `EMP-021` の重複IDがある（シード時に修正が必要）。
-- 公開リポジトリ(t001)へ移す際、LFSメディア・`CURSOR_PROMPT.md`・内部台帳は除外すること。
+- 公開リポジトリ(t001)へ移す際、LFSメディア・内部メモ・内部台帳は除外する（提出用リポジトリには含めていない）。
+
+## 8. 実際の結果（2026-11-10 時点）
+
+| 当時の記述 | 実際 |
+|---|---|
+| Firestore を正本にし、ブラウザは onSnapshot で購読 | 画面の状態は `care-api`（`PUT/GET /api/state`）経由で Firestore に同期する（`public/sync.js`）。ブラウザから Firestore へは直接つながない（`firestore.rules` は全拒否） |
+| Cloud Run `care-api`：max 10・同時実行 80 | max 3・同時実行 40（`infra/main.tf`） |
+| 月次割当を Gemini が構造化 JSON で出す | 割当は OR-Tools CP-SAT が行い、Gemini はルールの翻訳・説明・チャット・文面の作成だけを担う（v0.2 以降） |
+| Hosting の `/api/**` を Cloud Run `care-api` に rewrite | そのとおり（状態の同期用）。最適化ソルバー `care-solver-api` は、画面から CORS で直接呼ぶ |
+| 未決 1: `nurse-shift` の扱い | 触らず残置 |
+| 未決 2: API 言語 | Python FastAPI |
+| 未決 3: Firebase の追加 | `gdgoc-514203` に追加済み（Hosting サイト `gdgoc-514203`） |
+| 未決 4: GCP 変更の進め方 | フェーズごとに承認を得て実施 |
+| 未決 5: Cloudflare | 廃止（次の「ドメイン」） |
+| 段階計画 P0〜P5 | 基盤・API・Gemini・BigQuery・CI/CD は、v0.2・v0.3 の段階計画に組み替えて完了した（実際の分割と結果は `ARCHITECTURE_v0.3_cpsat.md`）。提出（P5）は、このリポジトリへの書き出しで行った |
 
 ## ドメイン
 `care.yutok.dev` は Cloudflare の DNS（プロキシOFF・CNAME）で Firebase Hosting に直結する。配信・API・CI は GCP のみで、Cloudflare Worker / Workers CI は使わない（廃止済み）。Web APIキーのリファラ制限は `care.yutok.dev` と `*.web.app` を許可。

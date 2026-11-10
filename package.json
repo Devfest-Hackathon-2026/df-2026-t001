@@ -2,7 +2,7 @@
   "name": "gdgoc-care-connect",
   "private": true,
   "type": "module",
-  "description": "仮名 — 介護施設のシフト・欠員対応（Vite + Preact + TypeScript、Firebase Hosting + Cloud Run）",
+  "description": "助っ人ケア — 介護施設のシフト・欠員対応（Vite + Preact + TypeScript、Firebase Hosting + Cloud Run）",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

@@ -110,7 +110,7 @@ export interface ChatMessage {
   links?: { label: string; target: string }[]; // リーダー向け：開く画面へのリンク
   action?: { kind: string; args: Record<string, unknown>; label: string; detail: string; state: 'proposed' | 'done' | 'cancelled' }; // リーダー向け：実行前の確認カード
   offer?: { vacancyId: string }; // 代わりの出勤の打診（入れる/見送るを会話内で返信）
-  attachments?: { name: string; type: string; url: string }[]; // 写真などの添付（モック：端末内のみ）
+  attachments?: { name: string; type: string; url: string }[]; // 写真などの添付（端末内のみ）
 }
 
 export interface AiProposal {

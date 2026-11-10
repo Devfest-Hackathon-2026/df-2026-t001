@@ -1,4 +1,4 @@
-// リーダー向け「シフト作成君」：状況の質問・操作の依頼・シフト作成の依頼を、自然文で受ける（モック／ルールベース）
+// リーダー向け「シフト作成君」：状況の質問・操作の依頼・シフト作成の依頼を、自然文で受ける（ルールベース。ルールで読み取れない言い回しは、Gemini の分類 aiintent.ts が補う）
 import type { State } from './store';
 import { extractDates } from './shiftmaker';
 import { fmtMD } from './dates';
