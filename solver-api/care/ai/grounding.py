@@ -176,11 +176,12 @@ _Z2H = str.maketrans("０１２３４５６７８９：", "0123456789:")
 def _grounded(answer: str, used: list[Hit]) -> bool:
     """答えの数字・時刻が、使った抜粋のどこかにそのまま書かれているか（作った数字を通さない）。"""
     src = "".join(h.text + h.section for h in used).translate(_Z2H)
-    body = _LIST.sub("", answer.translate(_Z2H))           # 手順の番号（1. 2. …）は数えない
+    body = _INLINE.sub("", _LIST.sub("", answer.translate(_Z2H)))   # 手順の番号（行頭・文中の 1. 2. …）は数えない
     return all(n in src for n in _NUM.findall(body))
 
 
 _LIST = re.compile(r"(?m)^\s*\d{1,2}[.)．、]\s*")
+_INLINE = re.compile(r"(?<![\d.:])\d{1,2}[.)．](?![\d])\s*")   # 文中の「1.管理者、2.…」。小数（1.5）・時刻（21:00）は対象外
 
 
 def answer(ai, fid: str, question: str, *, ip: str, search: Search | None = None) -> dict:
@@ -201,7 +202,7 @@ def answer(ai, fid: str, question: str, *, ip: str, search: Search | None = None
         return {**base, "found": False, "answer": NOT_FOUND, "citations": [], "model": None}
     try:
         out, usage = ai.llm.structured(model=FAST_MODEL, system=SYSTEM, prompt=_prompt(safe, hits), schema=ManualAnswer,
-                                       max_tokens=1024, thinking="low")
+                                       max_tokens=4096, thinking="low")   # 思考が 1024 の枠を使い切り、JSON が途中で切れることがあった
     except AIError as e:
         raise ServiceError(503, f"AI が応答できませんでした: {e}") from e
     ai._log(fid, "ask_manual", usage, hits=len(hits))

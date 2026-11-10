@@ -270,3 +270,12 @@ def test_voice_disabled_is_404(synth, monkeypatch):
 def test_voice_and_ask_manual_are_rate_limited_as_ai():
     assert guard.is_ai("POST", "/api/v1/voice") and guard.is_ai("POST", f"/api/v1/facilities/{FID}/ask-manual")
     assert guard.max_body("/api/v1/voice") > guard.MAX_BODY and guard.max_body("/api/v1/plan-intent") == guard.MAX_BODY
+
+
+def test_grounded_ignores_inline_list_numbers_but_not_made_up_numbers():
+    from care.ai.grounding import Hit, _grounded
+    h = Hit(doc_id="fac-midori--x", facility_id="fac-midori", title="t", section="2. 欠員時の連絡順",
+            text="前の人に15分つながらなければ、次の人へ進む。夜間（21:00以降）は夜勤責任者が電話する。", uri="")
+    assert _grounded("次の順です。1.管理者、2.サービス提供責任者、3.日勤リーダー。15分で次へ。21:00以降は夜勤責任者。", [h])
+    assert not _grounded("1.管理者。30分で次へ。", [h])          # 抜粋に無い数字は通さない
+    assert not _grounded("待ち時間は7.5時間。", [h])                     # 小数は番号として消さない
