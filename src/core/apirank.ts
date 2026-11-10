@@ -1,6 +1,7 @@
 // 欠員の打診の順番を、学習済みの応諾予測（care-solver-api の POST /api/v1/rank-candidates）で並べ直す。
 // 画面の rankCandidates が「打診してよい人」を決める（連勤・夜勤明け・スキル不足などはここで変えない）。
 // API は、その中の順番を並べ替え、応諾の見込み（0〜1）を添えるだけ。失敗・遅い・形が違うときは null を返し、従来の順番のまま進む。
+// 例外: その月の勤務も送り、ソルバーの必須ルールを破る人（hard）は打診の列から外す（apiverify.ts）。
 // 送るのは職員ID・役割・雇用形態・スキル・勤務可能帯・所属ユニット・経験年数と、欠員日の前後の勤務だけ（氏名は送らない）。
 import type { Candidate } from './roster';
 import { requiredSkills } from './roster';
@@ -9,8 +10,9 @@ import { addDays, stampDay } from './dates';
 import type { ShiftCode, Vacancy } from './types';
 import type { State } from './store';
 import { SOLVER } from '../leader/ai/api';
+import { monthCells, parseHard, type HardExcluded } from './apiverify';
 
-export interface AiRank { order: string[]; prob: Record<string, number> }
+export interface AiRank { order: string[]; prob: Record<string, number>; hard?: HardExcluded[] }
 
 const TIMEOUT_MS = 3000;
 const HOURS: Record<ShiftCode, number> = { 早番: 8, 日勤: 8, 遅番: 8, 夜勤: 13 };
@@ -41,6 +43,7 @@ export function rankRequest(s: State, v: Vacancy) {
     staff,
     assignments: s.assignments.filter((a) => a.date >= lo && a.date <= hi).map((a) => ({ staff_id: a.staffId, date: a.date, shift: a.shift, status: a.status })),
     avail: Object.entries(s.availability ?? {}).flatMap(([id, xs]) => xs.filter((x) => x.date === v.date).map((x) => ({ staff_id: id, date: x.date, shifts: x.shifts }))),
+    ...monthCells(s, v), // その月の勤務 → API がソルバーの必須ルールで候補を確かめる（apiverify.ts）
   };
 }
 
@@ -69,7 +72,8 @@ export async function rankViaApi(s: State, v: Vacancy): Promise<AiRank | null> {
   try {
     const r = await fetch(`${SOLVER}/api/v1/rank-candidates`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rankRequest(s, v)), signal: ctl.signal });
     if (!r.ok) return null;
-    return parseRank(await r.json());
+    const j: unknown = await r.json(); const ai = parseRank(j); const hard = parseHard(j);
+    return hard.length ? { ...(ai ?? { order: [], prob: {} }), hard } : ai;
   } catch {
     return null;
   } finally {

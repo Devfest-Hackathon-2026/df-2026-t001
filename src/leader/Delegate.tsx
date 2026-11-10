@@ -15,6 +15,7 @@ import { PostFlow, PostSheet, RelayCard } from './Auto';
 import { PLAN_LABEL } from './Adjust';
 import { SettingsForm } from './Settings';
 import { hm } from './util';
+import { ReplanNote, SolverPlanCard } from './ReplanCard';
 import type { Go } from './util';
 import { useState } from 'preact/hooks';
 
@@ -52,6 +53,7 @@ export function Steps4({ v, s }: { v: Vacancy; s: State }) {
 export function AdjustApprovalCard({ s, v, openStaff, onPreview }: { s: State; v: Vacancy; openStaff?: (id: string) => void; onPreview?: () => void }) {
   const plan = useMemo(() => findPlan(s, v), [s.assignments, v.id, v.auto?.planId]);
   const nPlans = useMemo(() => { const E = effSettings(s, v); const k = (Object.keys(E.adjustKinds) as ('break' | 'support' | 'extend')[]).filter((x) => E.adjustKinds[x]); return proposeAdjustments(s.assignments, v, [...k, 'combo']).filter((p) => p.resolves).length; }, [s.assignments, v.id]);
+  if (v.auto?.planId === 'solver') return <SolverPlanCard v={v} />;
   return (
     <section class="card askcard">
       <div class="row spread wrap" style="gap:8px"><div class="row" style="gap:8px"><Icon n="swap_horiz" /><b style="font-weight:500">時間の調整の承認</b></div><span class="chip warn">あなたの承認待ち</span></div>
@@ -61,6 +63,7 @@ export function AdjustApprovalCard({ s, v, openStaff, onPreview }: { s: State; v
         <div class="row wrap" style="gap:6px"><b style="font-weight:500">{plan.title}</b>{plan.kind === 'combo' && <span class="chip pri">組み合わせ</span>}<span class="chip ok">手薄な時間が解消します</span></div>
         <ul>{plan.changes.map((c) => <li key={c.assignmentId}>{c.text}</li>)}</ul>
         <ul class="small" style="margin-top:6px">{adjustChecks(s.assignments, plan).map((x, i) => <li key={i}><Icon n="check" sm /> {x}</li>)}</ul>
+        <ReplanNote v={v} />
         <details class="more"><summary>変更前後のスケジュール</summary><PlanBeforeAfter all={s.assignments} v={v} plan={plan} />{plan.caution && <p class="small" style="margin-top:6px"><Icon n="info" sm /> {plan.caution}</p>}</details>
         <p class="small" style="margin-top:6px;color:var(--tx)">承認すると通知する職員：{openStaff ? plan.affected.map((id, i) => <span key={id}>{i ? '、' : ''}<button class="link" onClick={() => openStaff(id)}>{staffById(id).name}</button></span>) : names(plan.affected)}</p>
       </div> : <p class="small" style="margin-top:8px">この調整案は、状況が変わったため確認できません。別の方法に進めてください。</p>}

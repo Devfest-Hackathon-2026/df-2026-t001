@@ -13,7 +13,12 @@ import { askEmployee, askLeader, employeeSentence, leaderSentence } from './aiin
 import { applyKind, proposeFromText } from './shiftmaker';
 import { addDays, addMinutes, fmtMD, nowStamp, setSimNow, stampDay, stampMin, stampTime, toMin } from './dates';
 import { rankViaApi, reorderByAi } from './apirank';
+import { hardLogText } from './apiverify';
+import { replanViaApi } from './apireplan';
+import type { ReplanVerdict } from './types';
+import { applyReplanS, decideReplan, SOLVER_PLAN } from './replanChoice';
 import type { AiRank } from './apirank';
+import { reasonsForQueue } from './aireasons';
 
 export interface Prefs { breakPref?: string; leaveBy?: string; leaveReason?: string; shiftHope: ShiftCode[]; history: { at: string; text: string }[]; }
 export interface Settings { push: boolean; mail: boolean; quietNight: boolean; textSize: 'standard' | 'large'; }
@@ -372,25 +377,34 @@ function fillS(s: State, id: string, staffId: string, source: Assignment['source
 }
 
 /** リーダーが「自動で進める」を承認（打診人数・返信待ち時間はここで上書き可） */
-export function approveAutopilot(id: string, o: { max?: number; waitMin?: number; ai?: AiRank } = {}) {
+export function approveAutopilot(id: string, o: { max?: number; waitMin?: number; ai?: AiRank; replan?: ReplanVerdict | null } = {}) {
   set((s) => {
     const v = vac(s, id); if (!v) return {};
     const E = effSettings(s, v);
     const max = o.max ?? v.auto?.max ?? E.maxCandidates;
     const ranked = rankOf(s, v);
     // 打診してよい人は画面の判定で決め、学習済みモデル（o.ai）があれば、その中の順番だけを並べ替える
-    const okList = ranked.filter((c) => !c.blocked && !c.unfit && !v.offers.some((x) => x.staffId === c.staff.id));
+    const okAll = ranked.filter((c) => !c.blocked && !c.unfit && !v.offers.some((x) => x.staffId === c.staff.id));
+    const okList = okAll.filter((c) => !o.ai?.hard?.some((h) => h.staffId === c.staff.id)); // ソルバーの必須ルールを破る人は打診しない（apiverify.ts）
     const queue = reorderByAi(okList, o.ai, E.priority.availFirst).slice(0, max).map((c) => c.staff.id);
     const prob = o.ai ? Object.fromEntries(okList.filter((c) => c.staff.id in o.ai!.prob).map((c) => [c.staff.id, o.ai!.prob[c.staff.id]])) : undefined;
     const unfit = ranked.filter((c) => !c.blocked && c.unfit);
     const req = requiredSkills(s.assignments, v);
     let t = patchV(s, id, (x) => ({ ...x, needSkills: req, auto: { mode: 'running', queue, idx: 0, max, waitMin: o.waitMin, log: x.auto?.log ?? [], ...(prob && Object.keys(prob).length ? { prob } : {}) } }));
     t = logS(t, id, 'リーダーがシフト作成君に任せました', 'ok');
+    const hardLog = hardLogText(o.ai?.hard, okAll.map((c) => c.staff.id)); if (hardLog) t = logS(t, id, hardLog, 'warn');
     const who = requesterOf(t, v);
+    const kinds = E.useAdjust ? (Object.keys(E.adjustKinds) as ('break' | 'support' | 'extend')[]).filter((k) => E.adjustKinds[k]) : [];
+    const plan = kinds.length ? proposeAdjustments(s.assignments, v, [...kinds, 'combo']).filter((p) => p.resolves && (p.kind !== 'combo' || true)).sort((a, b) => a.changes.length - b.changes.length)[0] : undefined;
+    // ソルバーの「この日だけの組み直し」（apireplan.ts）が答えていれば、確認結果を残し、端末の案より変更が少なければそちらを承認待ちにする
+    const rc = o.replan ? decideReplan(s.assignments, v, !!plan, queue, o.replan) : null;
+    if (rc) t = logS(autoS(t, id, { replan: o.replan!, replanUse: rc.use }), id, rc.text, rc.kind);
+    if (rc?.use === 'plan') {
+      t = logS(autoS(t, id, { mode: 'waiting_adjust', planId: SOLVER_PLAN }), id, 'ほかの職員の勤務が変わるため、承認をお願いします', 'warn');
+      return noticeS(t, { to: 'leader', kind: 'autopilot', title: `${id}：この日だけの組み直しで対応できます`, body: `変わる勤務 ${o.replan!.changes.length} 件。承認をお願いします`, link: `autopilot:${id}` });
+    }
     // ① まず、時間をずらす調整（単独・組み合わせ）で足りるかを確認する
     if (E.useAdjust) {
-      const kinds = (Object.keys(E.adjustKinds) as ('break' | 'support' | 'extend')[]).filter((k) => E.adjustKinds[k]);
-      const plan = kinds.length ? proposeAdjustments(s.assignments, v, [...kinds, 'combo']).filter((p) => p.resolves && (p.kind !== 'combo' || true)).sort((a, b) => a.changes.length - b.changes.length)[0] : undefined;
       if (plan) {
         t = logS(autoS(t, id, { mode: 'waiting_adjust', planId: plan.id }), id, `時間をずらす方法で対応できます：${plan.title}（${plan.changes.map((c) => c.text).join('／')}）。ほかの職員の勤務に影響するため、承認をお願いします`, 'warn');
         if (who) t = aiSayS(t, who, `代わりの出勤者を探しています。まず、勤務時間の調整で対応できないか確認しています。`);
@@ -421,7 +435,7 @@ export function skipCandidate(id: string) {
   set((s) => { const v = vac(s, id); if (!v?.auto) return {}; let t = patchV(s, id, (x) => ({ ...x, offers: x.offers.map((o) => (o.status === 'pending' ? { ...o, status: 'expired' } : o)) })); t = logS(t, id, 'リーダーが次の候補へ進めました', 'info'); return stepS(autoS(t, id, { mode: 'running', pendingStaff: undefined }), id); });
 }
 /** 通常の欠員（月次案の不足など）にも、リーダー操作で自動対応を開始できる */
-export function startAutopilot(id: string, o: { max?: number; waitMin?: number; ai?: AiRank } = {}) {
+export function startAutopilot(id: string, o: { max?: number; waitMin?: number; ai?: AiRank; replan?: ReplanVerdict | null } = {}) {
   set((s) => patchV(s, id, (x) => ({ ...x, auto: x.auto ?? { mode: 'ask', queue: [], idx: 0, max: effSettings(s, x).maxCandidates, log: [{ at: s.now, text: 'リーダーが自動対応を開始しました', kind: 'info' }] } })));
   approveAutopilot(id, o);
 }
@@ -434,9 +448,11 @@ export const isDelegating = (id: string) => delegating.has(id);
 export async function delegateAutopilot(id: string, o: { max?: number; waitMin?: number } = {}, start = false): Promise<void> {
   if (delegating.has(id)) return;
   delegating.add(id);
-  let ai: AiRank | null = null;
-  try { const v = vac(state, id); if (v) ai = await rankViaApi(state, v); } catch { ai = null; }
-  try { (start ? startAutopilot : approveAutopilot)(id, ai ? { ...o, ai } : o); } finally { delegating.delete(id); }
+  let ai: AiRank | null = null; let replan: ReplanVerdict | null = null;
+  try { const v = vac(state, id); if (v) [ai, replan] = await Promise.all([rankViaApi(state, v).catch(() => null), replanViaApi(state, v)]); } catch { ai = null; replan = null; }
+  try { (start ? startAutopilot : approveAutopilot)(id, { ...o, ...(ai ? { ai } : {}), ...(replan ? { replan } : {}) }); } finally { delegating.delete(id); }
+  // 打診は止めずに、理由の文は届いたときに差し込む（失敗なら従来のチップのまま）
+  try { const v2 = vac(state, id); if (v2?.auto?.queue.length) void reasonsForQueue(v2, rankOf(state, v2)).then((r) => { if (r) set((s) => (vac(s, id)?.auto ? autoS(s, id, { reasonAi: r }) : {})); }); } catch { /* 無視 */ }
 }
 /** デモ用：時間を進める（返信待ち時間の経過・夜間送信待ちの解除） */
 export function advanceClock(min: number) {
@@ -503,6 +519,8 @@ export function applyAdjustment(vacancyId_: string, planId: string) {
     return noticeS(t, { to: 'leader', kind: 'shift', title: `${vacancyId_}：調整案を反映しました`, body: plan.changes.map((c) => c.text).join('／'), link: 'vacancy' });
   });
 }
+/** ソルバーの「この日だけの組み直し」を、リーダーが承認して反映する（replanChoice.ts） */
+export function applySolverReplan(id: string) { set((s) => applyReplanS(s, id, { uid, logS, autoS, patchV, noticeS })); }
 /** 手動で延ばした時間を確定する（欠員を「時間の調整で対応」として閉じ、影響する職員に通知） */
 export function confirmManualAdjust(vacancyId_: string, changes: { assignmentId: string; staffId: string; text: string }[]) {
   set((s) => {

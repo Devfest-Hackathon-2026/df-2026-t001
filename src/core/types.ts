@@ -86,7 +86,12 @@ export interface AutoState {
   waitUntil?: string; pendingStaff?: string; // 夜間のため送信待ちの職員
   log: { at: string; text: string; kind: 'info' | 'offer' | 'ok' | 'warn' }[];
   prob?: Record<string, number>; // 学習済みモデルによる応諾の見込み（0〜1）。API が使えたときだけ入る
+  reasonAi?: Record<string, string>; // Gemini が書いた候補ごとの理由（1文）。API が使えたときだけ入る（順番には関係しない）
+  replan?: ReplanVerdict; // 欠員の日だけの最小変更の組み直し（CP-SAT, POST /api/v1/replan-inline）。API が答えたときだけ入る
+  replanUse?: 'check' | 'plan'; // check=画面の案のまま確認結果だけ表示 / plan=ソルバーの組み直しを案として出した
 }
+/** ソルバーの組み直し結果（src/core/apireplan.ts が検証済み） */
+export interface ReplanVerdict { status: string; ok: boolean; wallMs: number; minimal: boolean; changes: { staffId: string; from: ShiftCode | ''; to: ShiftCode | '' }[]; filledBy: string[]; relax: string[]; at: string }
 export type RequestKind = '休み' | '遅刻' | '早退' | 'シフト変更' | '希望休';
 export interface ShiftRequest {
   id: string; staffId: string; date: string; kind: RequestKind;

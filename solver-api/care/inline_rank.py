@@ -7,6 +7,8 @@
   人ごとの過去の応諾率（staff_prior）は施設全体の応諾率になる（ID を "app:" で区切り、学習データの人と混ざらないようにする）。
 * モデルは RANK_PRIOR_FACILITY（既定 fac-sakura）の champion を事前分布として使う。読めなければ model="none" を返す（エラーにしない）。
 * 打診してよいかの最終判断（連勤・夜勤明け・週の上限など）は画面側が持つ。ここでの除外は、明らかに入れない人だけ。
+* ただし画面がその月の勤務（cells）を送ったときは、候補ごとに「引き受けたらソルバーの絶対ルールを破るか」を
+  inline_verify で確かめ、破る人を excluded に移す（reason はルールの名前、rule_id つき）。cells が無ければ従来どおり。
 """
 from __future__ import annotations
 
@@ -15,8 +17,9 @@ from datetime import date as Date, datetime, timedelta, timezone
 from typing import Callable, Literal
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
+from .inline_verify import check_cells, exclude_hard
 from .learn import scoring
 from .learn.store import ModelStore
 from .solver.monthly import WORK_H
@@ -70,6 +73,18 @@ class RankIn(BaseModel):
     staff: list[StaffIn] = Field(max_length=120)
     assignments: list[AsgIn] = Field(default_factory=list, max_length=2000)
     avail: list[AvailIn] = Field(default_factory=list, max_length=2000)
+    # 任意: その月の勤務（staff_id -> 日ごとの勤務。"" は休み）。あれば、候補ごとにソルバーの絶対ルールを確かめる（inline_verify）
+    cells: dict[str, list[str]] | None = Field(None, max_length=200)
+    month_days: int | None = Field(None, ge=28, le=31)
+    first_weekday: int | None = Field(None, ge=0, le=6)
+    carry_in: dict[str, str] = Field(default_factory=dict, max_length=200)
+    night_max: int | None = Field(None, ge=1, le=15)
+
+    @model_validator(mode="after")
+    def _cells(self):
+        if self.cells is not None:
+            check_cells(self.cells, self.date)
+        return self
 
 
 def _ts(s: str | None) -> datetime:
@@ -121,7 +136,10 @@ def rank(body: RankIn, art: dict | None) -> dict:
             excluded.append({"staff_id": s.id, "reason": "必要な資格がない"})
         else:
             ok.append(s)
-    rows = [features(body, s, work) for s in ok]
+    if body.cells is not None:   # ソルバーの絶対ルールを破る人は、打診の候補にしない
+        ok, hard = exclude_hard(body.date, body.shift, ok, body.cells, body.carry_in, body.month_days, body.first_weekday, body.night_max)
+        excluded += hard
+    rows =[features(body, s, work) for s in ok]
     probs, tops = None, None
     if art is not None and rows:
         try:

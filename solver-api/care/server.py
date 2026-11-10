@@ -12,6 +12,7 @@ from starlette.concurrency import run_in_threadpool
 
 from . import guard
 from .ai.compose import register as register_compose
+from .ai.reasons import register as register_reasons
 from .ai.llm import GeminiLLM
 from .ai.service import AIService
 from .inline_solve import InlineSolveIn, solve_inline as _solve_inline
@@ -298,6 +299,7 @@ def employee_intent(body: TextIn, req: Request):
 
 
 register_compose(app, ai, _ip)   # POST /api/v1/employee-compose（care/ai/compose.py）
+register_reasons(app, ai, _ip)   # POST /api/v1/candidate-reasons（care/ai/reasons.py）
 
 
 @app.post("/api/v1/facilities/{fid}/chat")
@@ -340,3 +342,9 @@ inline_rank.register(app, lambda: _svc)
 async def solve_inline(body: InlineSolveIn):
     """シフト作成君の『シフトを作る』。リクエストの職員・希望休・行事だけで CP-SAT を解いて表を返す。保存しない。"""
     return await heavy(_solve_inline, body)
+
+
+from .inline_replan import InlineReplanIn, replan_inline as _replan_inline  # noqa: E402  欠員の日だけを最小変更で組み直す（保存しない）
+@app.post("/api/v1/replan-inline")
+async def replan_inline(body: InlineReplanIn):
+    return await heavy(_replan_inline, body)

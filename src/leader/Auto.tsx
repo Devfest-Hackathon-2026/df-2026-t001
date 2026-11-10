@@ -2,7 +2,8 @@ import { useState } from 'preact/hooks';
 import { SKILLS, staffById, unitName } from '../core/facility';
 import type { Candidate } from '../core/roster';
 import { CandBeforeAfter, MiniChecks } from './Impact';
-import { Applicants, JobPreview, PRIORITY_NOTE, ReasonChips, SkillWhy } from './Job';
+import { Applicants, JobPreview, PRIORITY_NOTE, SkillWhy } from './Job';
+import { CandReason } from './AiReason';
 import { skillReasons } from '../core/roster';
 import type { SkillReason } from '../core/roster';
 import { fmtMD, stampTime } from '../core/dates';
@@ -117,7 +118,7 @@ export function RelayCard({ s, v, id, rank, cand, openStaff, setPv }: { s: State
         <span class={`chip ${CS[state].cls}`}>{CS[state].label}{state === 'pending' && a.waitUntil ? `（〜${stampTime(a.waitUntil)}）` : ''}</span>
       </div>
       {prob !== undefined && <div class="row wrap" style="gap:4px;margin-top:6px"><span class="chip pri" title="過去の打診の記録から学習したモデルの予測です">応諾の見込み {Math.round(prob * 100)}%</span></div>}
-      {cand && <ReasonChips c={cand} />}
+      {cand && <CandReason v={v} id={id} cand={cand} />}
       {cand && <MiniChecks c={cand} />}
       <div class="chatprev" style="margin-top:12px">
         <div class="small" style="margin-bottom:4px"><Icon n="chat" sm /> {st.name}さんの「シフト作成君」チャットに{state === 'waiting' || state === 'quiet' ? '送る予定の文面' : '送った文面'}{sent ? `（${hm(sent.at)}）` : ''}</div>
