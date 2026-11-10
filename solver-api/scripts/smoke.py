@@ -3,7 +3,7 @@
 
   python solver-api/scripts/smoke.py https://<service-url> [facility]
 
-求解 → 検証 → 日次 → 欠員（候補・打診・受諾）→ 組み直し案 → ルール追加と停止。
+求解 → 検証 → 日次 → 欠員（候補・組み直し案・打診・受諾・充足後の組み直しは 409）→ ルール追加と停止。
 Firestore に提案・手修正・欠員が追記される。デモ状態に戻すには solver-api/scripts/reset_demo.py。
 """
 import json
@@ -18,7 +18,16 @@ P = f"{BASE}/api/v1/facilities/{FID}"
 fails: list[str] = []
 
 
-def call(method, url, body=None):
+def call(method, url, body=None, retry=True):
+    """429（IP ごとの分あたりの上限）なら、上限が戻るまで待って 1 回だけ再試行する。"""
+    st, data, dt = _call(method, url, body)
+    if st == 429 and retry:
+        time.sleep(61)
+        return _call(method, url, body)
+    return st, data, dt
+
+
+def _call(method, url, body=None):
     req = urllib.request.Request(url, method=method, data=json.dumps(body).encode() if body is not None else None,
                                  headers={"Content-Type": "application/json"})
     t = time.time()
@@ -51,14 +60,17 @@ st, vac, dt = call("POST", f"{P}/vacancies", {"date": "2026-11-12", "shift": "�
 check("欠員の登録と候補", st == 201 and vac.get("candidates"), f"{dt:.2f}s 候補{len(vac.get('candidates', []))}人 除外{len(vac.get('excluded', []))}人")
 vid = vac["vacancy"]["vacancy_id"]
 top = vac["candidates"][0]
+# 組み直し案は、補充が決まる前（欠員が開いている間）に作れる。画面も充足前にだけ案のボタンを出す
+st, rp, dt = call("POST", f"{P}/vacancies/{vid}/replan", {"apply": False})
+check("組み直し案（適用しない）", st == 200 and rp.get("applied") is False, f"{dt:.1f}s status={rp.get('status')} changed={rp.get('changed_cells')}")
 st, o, _ = call("POST", f"{P}/vacancies/{vid}/offers", {"staff_id": top["staff_id"]})
 check("打診", st == 201, o.get("offer_id", ""))
 st, r2, _ = call("POST", f"{P}/vacancies/{vid}/offers/{o['offer_id']}/respond", {"status": "accepted"})
 check("受諾→充足", st == 200 and r2["vacancy"]["state"] == "filled", r2.get("vacancy", {}).get("filled_by", ""))
 st, v, _ = call("GET", f"{P}/rosters/2026-11/verify")
 check("充足後に絶対のルールを破っていない", st == 200 and not [b for b in v["broken"] if b["strength"] == "絶対"])
-st, rp, dt = call("POST", f"{P}/vacancies/{vid}/replan", {"apply": False})
-check("組み直し案（適用しない）", st == 200 and rp.get("applied") is False, f"{dt:.1f}s status={rp.get('status')} changed={rp.get('changed_cells')}")
+st, rp, _ = call("POST", f"{P}/vacancies/{vid}/replan", {"apply": False})
+check("充足した欠員は組み直さない（409）", st == 409, str(rp)[:80])
 rule = {"id": "r-smoke", "type": "request", "label": "スモークテスト用", "strength": "できれば", "origin": {"kind": "手入力"},
         "people": {"ids": [sid]}, "days": {"dates": [20]}, "shifts": {"ids": ["夜勤"]}, "want": False}
 st, _, _ = call("POST", f"{P}/rules", rule)
