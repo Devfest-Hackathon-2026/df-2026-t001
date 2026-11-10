@@ -20,13 +20,14 @@ import { Plan } from './Plan';
 import { DemoMenu } from './DemoMenu';
 import { AiHub } from './ai/AiHub';
 
-type G = 'dash' | 'shift' | 'todo' | 'people' | 'health' | 'chat' | 'settings';
+type G = 'dash' | 'shift' | 'todo' | 'people' | 'health' | 'chat' | 'ai' | 'settings';
 const NAV: { g: G; to: View; icon: string; label: string }[] = [
   { g: 'dash', to: 'dash', icon: 'dashboard', label: 'ホーム' }, { g: 'shift', to: 'month', icon: 'calendar_month', label: 'シフト' }, { g: 'todo', to: 'vac', icon: 'task_alt', label: '要対応' },
   { g: 'people', to: 'people', icon: 'groups', label: '職員' }, { g: 'health', to: 'health', icon: 'monitor_heart', label: '体調' }, { g: 'chat', to: 'chat', icon: 'chat', label: 'チャット' },
+  { g: 'ai', to: 'ai', icon: 'psychology', label: '学習AI' },
 ];
 const SETTINGS = { g: 'settings' as G, to: 'auto' as View, icon: 'settings', label: '設定' };
-const groupOf = (v: View): G => (v === 'month' || v === 'day' || v === 'plan' ? 'shift' : v === 'auto' || v === 'ai' ? 'settings' : v === 'vac' || v === 'req' ? 'todo' : v === 'people' || v === 'labor' || v === 'collect' ? 'people' : v);
+const groupOf = (v: View): G => (v === 'month' || v === 'day' || v === 'plan' ? 'shift' : v === 'auto' ? 'settings' : v === 'vac' || v === 'req' ? 'todo' : v === 'people' || v === 'labor' || v === 'collect' ? 'people' : v);
 
 export function App() {
   const s = useStore();
@@ -82,7 +83,6 @@ export function App() {
     if (active === 'shift') return <div class="subtabs"><div class="seg" role="tablist"><button role="tab" aria-selected={nav.view === 'month'} onClick={() => go('month')}>1ヶ月</button><button role="tab" aria-selected={nav.view === 'day'} onClick={() => go('day')}>1日</button><button role="tab" aria-selected={nav.view === 'plan'} onClick={() => go('plan')}>シフト作成</button></div>
       {nav.view !== 'plan' && <button class="btn sm" onClick={() => setPrint(nav.date.slice(0, 7))}><Icon n="print" sm />{compact ? <span class="sr">勤務表を印刷</span> : ' 勤務表を印刷'}</button>}</div>;
     if (active === 'todo') return <div class="subtabs"><div class="seg" role="tablist"><button role="tab" aria-selected={nav.view === 'vac'} onClick={() => go('vac', { vacId: undefined })}>欠員 {open}</button><button role="tab" aria-selected={nav.view === 'req'} onClick={() => go('req')}>申請 {pending}</button></div></div>;
-    if (active === 'settings') return <div class="subtabs"><div class="seg" role="tablist"><button role="tab" aria-selected={nav.view === 'auto'} onClick={() => go('auto')}>自動対応</button><button role="tab" aria-selected={nav.view === 'ai'} onClick={() => go('ai')}>学習AI（CP-SAT・応諾予測）</button></div></div>;
     if (active === 'people') return <div class="subtabs"><div class="seg" role="tablist"><button role="tab" aria-selected={nav.view === 'people'} onClick={() => go('people')}>職員・入居者</button><button role="tab" aria-selected={nav.view === 'labor'} onClick={() => go('labor')}>労務</button><button role="tab" aria-selected={nav.view === 'collect'} onClick={() => go('collect')}>希望休</button></div></div>;
     return null;
   })();
@@ -96,7 +96,7 @@ export function App() {
         {items.map((n) => { const on = active === n.g; const cnt = badge(n.g);
           return <button key={n.g} class={`nv${on ? ' on' : ''}`} onClick={() => go(on ? nav.view : n.to)} aria-current={on ? 'page' : undefined}><span class="pill"><Icon n={n.icon} fill={on} />{cnt > 0 && <span class="badge" style="position:absolute;top:-4px;right:-2px">{cnt}</span>}</span><span>{n.label}</span></button>; })}
         {side && <button class={`nv settings${active === 'settings' ? ' on' : ''}`} onClick={() => go(SETTINGS.to)} aria-current={active === 'settings' ? 'page' : undefined}><span class="pill"><Icon n={SETTINGS.icon} fill={active === 'settings'} /></span><span>{SETTINGS.label}</span></button>}
-        {!side && <button class={`nv${active === 'people' || active === 'health' || active === 'settings' ? ' on' : ''}`} onClick={() => setMore(true)}><span class="pill"><Icon n="more_horiz" /></span><span>その他</span></button>}
+        {!side && <button class={`nv${active === 'people' || active === 'health' || active === 'ai' || active === 'settings' ? ' on' : ''}`} onClick={() => setMore(true)}><span class="pill"><Icon n="more_horiz" /></span><span>その他</span></button>}
       </nav>
       <main class="content">{sub}<div class="body">{body}</div></main>
       {bell && <div class="pop" role="dialog" aria-label="お知らせ"><div class="row spread" style="padding:12px 16px"><b style="font-weight:500">お知らせ</b><button class="btn sm" onClick={() => readAll('leader')}>すべて既読</button></div>
