@@ -1,6 +1,7 @@
 """学習の成果物（champion モデル・履歴・反復検出の候補）の読み込み。Pipelines が GCS に置いたものを API が読む。
 
   gs://<root>/models/<施設>/champion.json   昇格したモデル（採点に使う）
+  gs://<root>/models/<施設>/challenger.json 比較で次点だったモデル（A/B で一部の打診にだけ使う。ab.py）
   gs://<root>/models/<施設>/history.json    学習のたびの記録（件数・AUC・昇格したか）
   gs://<root>/learned/<施設>.json           反復検出のルール候補
 読み込みは5分キャッシュ。読めなければ「モデルなし」として、従来の順位付けに戻る（API は止めない）。
@@ -43,6 +44,10 @@ class ModelStore:
         t = self._read(f"models/{fid}/champion.json")
         return scoring.load(t) if t else None
 
+    def challenger(self, fid: str) -> dict | None:
+        t = self._read(f"models/{fid}/challenger.json")
+        return scoring.load(t) if t else None
+
     def history(self, fid: str) -> list[dict]:
         t = self._read(f"models/{fid}/history.json")
         return json.loads(t) if t else []
@@ -55,11 +60,15 @@ class ModelStore:
 class MemoryModelStore:
     """テスト用。"""
 
-    def __init__(self, champions: dict | None = None, histories: dict | None = None, learned: dict | None = None) -> None:
-        self.c, self.h, self.l = champions or {}, histories or {}, learned or {}
+    def __init__(self, champions: dict | None = None, histories: dict | None = None, learned: dict | None = None,
+                 challengers: dict | None = None) -> None:
+        self.c, self.h, self.l, self.ch = champions or {}, histories or {}, learned or {}, challengers or {}
 
     def champion(self, fid):
         return self.c.get(fid)
+
+    def challenger(self, fid):
+        return self.ch.get(fid)
 
     def history(self, fid):
         return self.h.get(fid, [])

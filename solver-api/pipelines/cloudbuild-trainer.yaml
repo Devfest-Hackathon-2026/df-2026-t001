@@ -3,7 +3,7 @@
 substitutions:
   _REGION: asia-northeast1
   _REPO: cloud-run-source-deploy
-  _TAG: v1
+  _TAG: v3
 steps:
   - name: gcr.io/cloud-builders/docker
     args: ["build", "-f", "pipelines/Dockerfile.trainer", "-t", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/care-trainer:${_TAG}", "."]

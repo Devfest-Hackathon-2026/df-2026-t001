@@ -70,7 +70,7 @@ export function VacancyView({ ctx }: { ctx: Ctx }) {
         </div>
         <div class="row" style="margin-top:10px;gap:12px;flex-wrap:wrap">
           <button class="btn pri" onClick={() => void register()} disabled={busy || !absent}>{busy ? <><span class="sv-spin" /> 登録中…</> : <><Icon n="person_search" sm /> 欠員を登録して候補を見る</>}</button>
-          {model && <span class={`chip ${model.using_model ? 'ok' : 'warn'}`}>{model.using_model && model.champion ? `学習済みモデルを使用（${model.champion.kind === 'pooled_logistic' ? 'プール学習' : model.champion.kind === 'xgboost' ? 'XGBoost' : 'ロジスティック'}・AUC ${model.champion.auc?.toFixed(2)}）` : 'この施設は学習済みモデルなし（従来の順位付け）'}</span>}
+          {model && <span class={`chip ${model.using_model ? 'ok' : 'warn'}`}>{model.using_model && model.champion ? `学習済みモデルを使用（${model.champion.kind === 'pooled_logistic' ? 'プール学習' : model.champion.kind === 'xgboost' ? 'XGBoost' : 'ロジスティック'}${model.champion.model_type?.startsWith('bqml') ? '・BigQuery ML' : ''}・AUC ${model.champion.auc?.toFixed(2)}）` : 'この施設は学習済みモデルなし（従来の順位付け）'}</span>}
         </div>
         {model && !model.using_model && model.note && <p class="sv-note" style="margin-top:6px">{model.note}</p>}
         {err && <div class="sv-err" role="alert">{err}</div>}

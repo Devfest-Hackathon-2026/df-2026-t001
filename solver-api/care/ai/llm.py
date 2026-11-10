@@ -112,6 +112,9 @@ class GeminiLLM:
                 system_instruction=system, temperature=0.2, max_output_tokens=max_tokens, thinking=thinking))
             if not r.text:
                 raise AIError("空の応答")
+            fr = str(getattr(r.candidates[0], "finish_reason", "") or "") if r.candidates else ""
+            if "MAX_TOKENS" in fr:                         # 思考で出力の枠を使い切ると、文が途中で切れる。切れた文は使わない
+                raise AIError("出力が途中で切れました（MAX_TOKENS）")
             return r.text.strip(), self._usage(model, r, t0)
         except AIError:
             raise

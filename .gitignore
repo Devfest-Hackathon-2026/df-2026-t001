@@ -19,6 +19,10 @@ artifacts/
 !docs/
 !docs/**
 
+# ピッチ用メディア（開発用リポジトリのみ。LFS）は *.png 除外の例外として追跡する
+!media/
+!media/**
+
 # Python 依存定義は追跡する（上の *.txt 除外の例外）
 !api/requirements*.txt
 !solver-api/requirements*.txt

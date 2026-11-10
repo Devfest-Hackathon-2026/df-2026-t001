@@ -1,0 +1,20 @@
+/* 分析タブ（InsightsView）。グラフは外部ライブラリを使わず SVG で描く。色は既存の変数を使う */
+.in-chart { width: 100%; height: auto; display: block; margin-top: 8px; }
+.in-chart text { font-size: 11px; fill: var(--tx2); }
+.in-chart .axis { stroke: var(--line); stroke-width: 1; }
+.in-chart .grid { stroke: var(--line2); stroke-width: 1; }
+.in-chart .act { fill: var(--tx3); }
+.in-chart .fc { fill: var(--pri); opacity: .75; }
+.in-chart .band { stroke: var(--pri); stroke-width: 2; }
+.in-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--tx2); margin-top: 6px; }
+.in-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.in-heat { display: grid; grid-template-columns: 44px repeat(7, minmax(0, 1fr)); gap: 3px; margin-top: 8px; font-size: 12px; }
+.in-heat .h { color: var(--tx2); text-align: center; padding: 2px 0; }
+.in-heat .r { color: var(--tx2); display: flex; align-items: center; }
+.in-heat .c { border-radius: 6px; text-align: center; padding: 6px 2px; line-height: 1.2; background: var(--bg3); }
+.in-heat .c b { display: block; font-weight: 500; font-size: 14px; }
+.in-heat .c span { font-size: 10px; opacity: .85; }
+.in-bar { height: 8px; background: var(--bg3); border-radius: 6px; overflow: hidden; min-width: 60px; }
+.in-bar i { display: block; height: 100%; background: var(--pri); border-radius: 6px; }
+.in-soon { text-align: center; padding: 32px 16px; color: var(--tx2); }
+.in-scroll { overflow-x: auto; max-width: 100%; }

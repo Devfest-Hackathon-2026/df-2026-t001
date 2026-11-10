@@ -2,5 +2,5 @@
 pytest>=8
 httpx>=0.27
 scikit-learn>=1.4
-xgboost>=2.0
+xgboost==2.1.4  # 学習用イメージ（pipelines/Dockerfile.trainer）と同じ版。3.x は BigQuery ML の書き出しの形式と合わない
 numpy>=1.26

@@ -24,10 +24,17 @@ slots = threading.BoundedSemaphore(CONCURRENCY)
 
 
 def client_ip(headers, peer: str | None) -> str:
-    """Cloud Run は X-Forwarded-For の末尾に実際のクライアント IP を足す。先頭側は偽装できるので末尾を使う。"""
+    """Cloud Run は X-Forwarded-For の末尾に実際のクライアント IP を足す。先頭側は偽装できるので末尾を使う。
+    外部ロードバランサ（infra/edge.tf、Cloud Armor）を通すと末尾に LB の IP が付くので、EDGE_PROXY_IPS（カンマ区切り）に
+    挙げた IP は末尾から取り除いてから使う（未設定なら従来どおり）。"""
     xff = headers.get("x-forwarded-for")
     if xff:
-        return xff.split(",")[-1].strip()
+        hops = [h.strip() for h in xff.split(",") if h.strip()]
+        trusted = {x.strip() for x in os.getenv("EDGE_PROXY_IPS", "").split(",") if x.strip()}
+        while len(hops) > 1 and hops[-1] in trusted:
+            hops.pop()
+        if hops:
+            return hops[-1]
     return peer or "unknown"
 
 
@@ -38,11 +45,19 @@ def is_heavy(method: str, path: str) -> bool:
     return "/daily/" in path or path.endswith("/candidates")
 
 
-AI_PATHS = ("/translate", "/explain", "/chat", "/plan-intent", "/leader-intent", "/employee-intent", "/employee-compose", "/candidate-reasons")
+AI_PATHS = ("/translate", "/explain", "/chat", "/plan-intent", "/leader-intent", "/employee-intent", "/employee-compose", "/candidate-reasons",
+            "/ask-manual", "/voice")
 
 
 def is_ai(method: str, path: str) -> bool:
     return method == "POST" and path.endswith(AI_PATHS)
+
+
+def max_body(path: str) -> int:
+    """本文の上限。音声入力（/api/v1/voice）だけは音声ファイルのため大きくする（それ以外は MAX_BODY）。"""
+    if path == "/api/v1/voice":
+        return int(os.getenv("VOICE_MAX_BYTES", str(600 * 1024)))
+    return MAX_BODY
 
 
 @contextmanager

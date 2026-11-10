@@ -7,6 +7,7 @@ import type { State } from '../core/store';
 import type { ChatMessage } from '../core/types';
 import { Icon, Modal, useToast } from '../shared/ui';
 import { Back, hm, useWide } from './util';
+import { VoiceButton } from '../shared/VoiceButton';
 
 interface Th { id: string; name: string; desc: string; section: string }
 export const THREADS: Th[] = [
@@ -84,6 +85,7 @@ function Conv({ s, t, onBack }: { s: State; t: Th; onBack?: () => void }) {
 /** リーダーとシフト作成君の会話：聞く・頼む・シフトを作る。実行の前に必ず確認カードを出す */
 function AiConv({ s, onBack, onOpen }: { s: State; onBack?: () => void; onOpen?: (target: string) => void }) {
   const [text, setText] = useState('');
+  const [toast, setToast] = useToast();
   const end = useRef<HTMLDivElement>(null);
   const msgs = s.messages.filter((m) => m.thread === AI_THREAD.id);
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [msgs.length]);
@@ -104,8 +106,10 @@ function AiConv({ s, onBack, onOpen }: { s: State; onBack?: () => void; onOpen?:
         <div ref={end} />
       </div>
       <div class="cin">
+        <VoiceButton target="leader" onText={setText} onError={setToast} />
         <input class="input" placeholder="シフト作成君に聞く・頼む（例：12月のシフトを作って）" value={text} onInput={(e) => setText((e.target as HTMLInputElement).value)} onKeyDown={(e) => e.key === 'Enter' && !e.isComposing && text.trim() && send(text)} aria-label="シフト作成君へのメッセージ" />
         <button class="btn pri" disabled={!text.trim()} onClick={() => send(text)} aria-label="送信"><Icon n="send" sm /></button></div>
+      {toast}
     </div>
   );
 }

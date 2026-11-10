@@ -117,6 +117,7 @@ export function PlanGrid({ s, plan, month, days, ro, sums, onDay, onCell, onToas
   const one = nr && nr.r0 === nr.r1 && nr.c0 === nr.c1 ? { st: staffRows[nr.r0], d: days[nr.c0] } : null;
   const target = nr ? { st: staffRows[nr.r0], d: days[nr.c0] } : null;
   const evByDay = (d: string) => eventsOn(s.events, d);
+  const kindBy = new Map(days.map((d) => [d, shortKind(sums.get(d))]));
   let rowNo = -1;
 
   return (
@@ -148,12 +149,12 @@ export function PlanGrid({ s, plan, month, days, ro, sums, onDay, onCell, onToas
         <table class={`pgrid${ro ? ' ro' : ''}`} style={`table-layout:fixed;width:${178 + 34 * days.length}px`}>
           <colgroup><col style="width:178px" />{days.map((d) => <col key={d} style="width:34px" />)}</colgroup>
           <thead>
-            <tr class="evrow"><th class="nm"><span class="small">行事</span></th>{days.map((d) => { const ev = evByDay(d); const e0 = ev[0]; const st = e0 ? EVENT_STYLE[e0.kind] : null;
+            <tr class="pg-evrow"><th class="nm"><span class="small">行事</span></th>{days.map((d) => { const ev = evByDay(d); const e0 = ev[0]; const st = e0 ? EVENT_STYLE[e0.kind] : null;
               return <th key={d} class={e0 ? 'evcol' : ''} title={ev.map((e) => `${e.kind}：${e.title}`).join('／')}>{e0 && st ? <span class="evl" style={`background:${st.bg};color:${st.fg}`}>{e0.title.slice(0, 2)}</span> : null}</th>; })}</tr>
             <tr><th class="nm">職員</th>{days.map((d) => { const w = dow(d); const sm = sums.get(d); const hol = holidayOf(d); const ev = evByDay(d).length > 0;
-              return <th key={d} class={`dh${w === 0 ? ' sun' : w === 6 ? ' sat' : ''}${hol ? ' hol hol-col' : ''}${ev ? ' evcol' : ''}`} onClick={() => onDay(d)} title="クリックで、この日の1日表示"><span class="d">{+d.slice(8)}</span><span class="w">{DOW_JA[w]}</span></th>; })}</tr>
-            <tr class="shrow"><th class="nm"><span class="small">不足</span></th>{days.map((d) => { const sm = sums.get(d); const n = (sm?.vacant ?? 0) + (sm?.issues.length ?? 0);
-              return <th key={d} class={evByDay(d).length ? 'evcol' : ''}><button class={`shb ${sm?.level ?? 'ok'}`} onClick={() => onDay(d)} title={n ? `不足 ${n}件：クリックで詳細` : '不足なし'} aria-label={`${fmtMD(d)} 不足 ${n}件`}>{n || ''}</button></th>; })}</tr>
+              return <th key={d} class={`dh${w === 0 ? ' sun' : w === 6 ? ' sat' : ''}${hol ? ' hol hol-col' : ''}${ev ? ' evcol' : ''}${shortKind(sm) !== 'ok' ? ` col-${shortKind(sm)}` : ''}`} onClick={() => onDay(d)} title="クリックで、この日の1日表示"><span class="d">{+d.slice(8)}</span><span class="w">{DOW_JA[w]}</span></th>; })}</tr>
+            <tr class="shrow"><th class="nm"><span class="small">不足（赤＝担当なし・スキル　橙＝人数）</span></th>{days.map((d) => { const k = shortKind(sums.get(d)); const sm = sums.get(d); const n = (sm?.vacant ?? 0) + (sm?.issues.length ?? 0); const sk = (sm?.issues as { kind: string }[] | undefined)?.filter((i) => i.kind === 'skill').length ?? 0;
+              return <th key={d} class={`${evByDay(d).length ? 'evcol' : ''}${k !== 'ok' ? ` col-${k}` : ''}`}><button class={`shb ${k}`} onClick={() => onDay(d)} title={n ? `不足 ${n}件（担当なし ${sm?.vacant ?? 0}・スキル ${sk}・人数 ${n - (sm?.vacant ?? 0) - sk}）：クリックでこの日の1日表示` : '不足なし'} aria-label={`${fmtMD(d)} 不足 ${n}件`}>{n || ''}</button></th>; })}</tr>
           </thead>
           <tbody>{groups.map(({ u, rows }) => <>
             <tr key={u.id + 'h'} class="ugrp"><th colSpan={days.length + 1}><span>{u.floor}階 {u.name}</span></th></tr>
@@ -163,7 +164,7 @@ export function PlanGrid({ s, plan, month, days, ro, sums, onDay, onCell, onToas
                 <span class={`pl${lack > 0 ? ' lack' : ''}`} title={`有給休暇 今年度 ${pc}日／義務 ${PAID_TARGET}日（デモ用の仮値）`}>有休 {pc}/{PAID_TARGET}</span></div></td>
                 {days.map((d, c) => { const a = idx.get(`${st.id}|${d}`); const code = codeAt(st.id, d); const wantOff = off.includes(d); const ake = !a && code === 'off' && plan.draft.some((x) => x.staffId === st.id && x.shift === '夜勤' && x.date === dayAfter(d, -1));
                   const cur = inSel(r, c); const hand = nr && r === nr.r1 && c === nr.c1;
-                  return <td key={d} data-rc={`${r}-${c}`} class={`c${holidayOf(d) ? ' hol-col' : ''}${evByDay(d).length ? ' evcol' : ''}${cur ? ' selc' : ''}`} onMouseDown={(e) => start(r, c, e)} onMouseEnter={() => enter(r, c)} onDblClick={() => onCell(st.id, d)}>
+                  return <td key={d} data-rc={`${r}-${c}`} class={`c${holidayOf(d) ? ' hol-col' : ''}${evByDay(d).length ? ' evcol' : ''}${kindBy.get(d) !== 'ok' ? ` col-${kindBy.get(d)}` : ''}${cur ? ' selc' : ''}`} onMouseDown={(e) => start(r, c, e)} onMouseEnter={() => enter(r, c)} onDblClick={() => onCell(st.id, d)}>
                     {code === 'paid' ? <span class="t paid" title="有給休暇">有</span> : a ? <span class={`t sh-${SHIFTS[a.shift].short}${wantOff ? ' conf' : ''}`} title={`${a.shift}／${unitName(a.unitId)}${a.unitId !== st.homeUnit ? '（他ユニットへ応援）' : ''}${wantOff ? '（希望休の日）' : ''}`}>{SHIFTS[a.shift].short}{a.unitId !== st.homeUnit && <sup class="xu">{unitName(a.unitId).slice(0, 1)}</sup>}</span> : ake ? <span class="ake">明</span> : wantOff ? <span class="t hope">休</span> : <span class="off">・</span>}
                     {hand && !ro && <span class="fillh" onMouseDown={(e) => { e.stopPropagation(); drag.current = 'fill'; setFillTo({ r, c }); }} title="ドラッグで塗りつぶし" />}
                   </td>; })}</tr>; })}
@@ -176,6 +177,8 @@ export function PlanGrid({ s, plan, month, days, ro, sums, onDay, onCell, onToas
     </section>
   );
 }
+/** その日の不足の種類：担当なし・スキル不足は赤（short）、時間帯の人数不足だけなら橙（warn） */
+const shortKind = (sm?: { vacant: number; issues: unknown[] }): 'ok' | 'warn' | 'short' => { if (!sm) return 'ok'; const iss = sm.issues as { kind: string }[]; return sm.vacant > 0 || iss.some((i) => i.kind === 'skill') ? 'short' : iss.length ? 'warn' : 'ok'; };
 const dayAfter = (d: string, n: number) => { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
 
 export function ReqModal({ s, staffId, date, shift: sh0, unitId: u0, kind: k0, onClose, onSent }: { s: State; staffId: string; date: string; shift?: ShiftCode; unitId?: string; kind?: PlanReqKind; onClose: () => void; onSent: (t: string) => void }) {

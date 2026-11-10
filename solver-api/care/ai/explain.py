@@ -51,6 +51,8 @@ def fact_check(lines: list[str], out: str) -> tuple[bool, str]:
     new_nums = set(NUM.findall(out)) - set(NUM.findall(src))
     if new_nums:
         return False, f"元に無い数字: {sorted(new_nums)}"
+    if not out.rstrip().endswith(("。", "！", "？", "!", "?", "）", "」")):
+        return False, "文が途中で切れています"
     missing = [q for q in QUOTED.findall(src) if q not in out]
     if missing:
         return False, f"ルール名が欠けています: {missing[:2]}"
@@ -62,10 +64,13 @@ def fact_check(lines: list[str], out: str) -> tuple[bool, str]:
 def rephrase(llm: LLM, lines: list[str], *, model: str = FAST_MODEL) -> dict:
     template = "\n".join(lines)
     try:
-        out, usage = llm.text(model=model, system=SYSTEM, prompt="事実（データ）:\n<facts>\n" + as_data(template) + "\n</facts>")
+        # 思考の量を抑え、出力の枠を広げる（既定の思考だと 1536 トークンの枠を使い切り、文が途中で切れることがあった）
+        out, usage = llm.text(model=model, system=SYSTEM, prompt="事実（データ）:\n<facts>\n" + as_data(template) + "\n</facts>",
+                              max_tokens=4096, thinking="low")
     except AIError as e:
         log.warning("explain: Gemini 失敗: %s", e)
-        return {"text": template, "route": "template", "reason": "AI が使えなかったため、元の説明を表示しています", "usage": None}
+        return {"text": template, "route": "template", "reason": "AI が使えなかったため、元の説明を表示しています", "usage": None,
+                "blocked": type(e).__name__ == "ArmorBlocked"}   # Model Armor が出力を止めた（記録用。画面には出さない）
     ok, why = fact_check(lines, out)
     if not ok and why.startswith("ルール名が欠けています"):
         # 言い換えで省略されたルールは、元の事実の行をそのまま補う（モデルに書かせない）。数字の検査は先に通っている

@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import os
 import time
 from collections import Counter
 from functools import wraps
@@ -16,6 +17,8 @@ from ..dsl import ALL_KINDS, OFF
 from ..service import ServiceError, Svc
 from ..solver.monthly import WORK_H
 from ..verify import verify_monthly
+from . import insights as insights_mod
+from .privacy import pseudonymize
 
 SYSTEM = """あなたは介護施設の勤務表づくりを手伝うアシスタント。リーダーの質問に、ツールで調べた事実だけで答える。
 - 事実はツールの結果から。ツールで確認できないことは「確認できません」と言う。推測で数字や名前を作らない。
@@ -27,6 +30,8 @@ SYSTEM = """あなたは介護施設の勤務表づくりを手伝うアシス�
 - 勤務表と関係のない質問には、答えられないと伝える。
 - 「〜にしたら問題は出ますか」「〜を休みにしたい」のような質問は、まず propose_edit で影響を見積もる（実行はされない）。
 - 過去の傾向（応諾率・欠員の推移・夜勤の偏りなど）は analytics_stats で調べる。応諾予測のモデルは acceptance_model_info、手修正のくり返しは learned_rule_candidates。
+- 欠員の出やすい曜日・勤務や理由、月ごとの推移、職員ごとの応諾の傾向、モデルの精度の推移・較正は history_insights で調べる。
+  history_insights の職員は ID のまま返る。応諾率は過去の傾向であって、個人の評価や打診の可否の判断には使わない（そう伝える）。
 - 日付は YYYY-MM-DD でツールに渡す。年が省略されたら、下の「今見ている月」の年を使う。ツールが失敗したら、そのまま失敗したと伝える（日付や数字を推測しない）。"""
 
 
@@ -38,7 +43,9 @@ SOLVER_MIN_SEC = 10.0      # チャットの締め切りまでの残りがこれ
 
 
 def system_for(month: str) -> str:
-    return f"{SYSTEM}\n今見ている月: {month}（この施設の勤務表の対象月）"
+    extra = ("\n施設の運用マニュアル（引き継ぎ・欠員時の連絡・打診のルールなど）についての質問は search_manual で調べ、"
+             "文書名と該当箇所を添えて答える。マニュアルに無いことは推測しない。") if os.getenv("GROUNDING_DATASTORE") else ""
+    return f"{SYSTEM}{extra}\n今見ている月: {month}（この施設の勤務表の対象月）"
 
 
 def _clip(s: Any, n: int = 120) -> str:
@@ -46,8 +53,9 @@ def _clip(s: Any, n: int = 120) -> str:
 
 
 class ChatTools:
-    def __init__(self, svc: Svc, fid: str, month: str, analytics=None, *, ip: str | None = None, deadline: float | None = None) -> None:
-        self.svc, self.fid, self.month, self.analytics = svc, fid, month, analytics
+    def __init__(self, svc: Svc, fid: str, month: str, analytics=None, insights=None, *, ip: str | None = None,
+                 deadline: float | None = None) -> None:
+        self.svc, self.fid, self.month, self.analytics, self.insights = svc, fid, month, analytics, insights
         self.ip, self.deadline = ip, deadline
         self.calls = 0
         self.solver_calls = 0
@@ -136,6 +144,24 @@ class ChatTools:
         rows = self.analytics.run(kind, self.fid)
         return {"kind": kind, "rows": rows, "note": "過去の履歴（合成データ＝架空を含む）の集計です"}
 
+    def history_insights(self, kind: str, staff_id: str | None = None, months: int | None = None) -> dict:
+        """決まった集計（insights.QUERIES）だけ。引数は列挙とパラメータで、SQL は書かせない。結果は仮名化を保ってから返す。"""
+        if self.insights is None:
+            raise ServiceError(503, "履歴の集計は今は使えません")
+        if staff_id and staff_id not in self.names:
+            raise ServiceError(404, f"従業員が見つかりません: {staff_id}")
+        try:
+            rows = self.insights.run(kind, self.fid, staff_id=staff_id, months=months)
+        except ValueError as e:
+            raise ServiceError(400, str(e)) from e
+        out = {"kind": kind, "about": insights_mod.QUERIES[kind][0], "rows": _pseudo_rows(rows, self.fac.staff),
+               "note": "過去の履歴（合成データ＝架空を含む）の集計です。職員は ID で表しています"}
+        if kind not in ("model_accuracy_trend", "model_calibration"):
+            out["months"] = months or 12
+        if getattr(self.insights, "fake", False):
+            out["note"] += "（BigQuery に接続していないため、固定の架空の値です）"
+        return out
+
     # ---------------------------------------------------------------- 提案（実行しない）
     def propose_edit(self, staff_id: str, date: str, to_shift: str, reason: str = "") -> dict:
         month, day = self._day(date)
@@ -195,7 +221,20 @@ class ChatTools:
     def registry(self) -> dict[str, Callable[..., Any]]:
         return {n: self._limited(n, getattr(self, n)) for n in ("facility_info", "roster_summary", "staff_schedule", "who_works", "verify_roster",
                                               "daily_schedule", "list_rules", "list_vacancies", "find_candidates", "acceptance_model_info", "learned_rule_candidates",
-                                              "analytics_stats", "propose_edit", "propose_offer")}
+                                              "analytics_stats", "history_insights", "propose_edit", "propose_offer")}
+
+
+def _pseudo_rows(rows: list[dict], staff) -> list[dict]:
+    """集計結果を Gemini に渡す前に、仮名化を保つ。氏名の列は落とし、文字列の中の氏名は ID に置き換える。"""
+    out = []
+    for r in rows[:20]:
+        row = {}
+        for k, v in r.items():
+            if k in ("name", "staff_name", "absent_name"):
+                continue
+            row[k] = pseudonymize(v, staff)[0][:200] if isinstance(v, str) else v
+        out.append(row)
+    return out
 
 
 def _obj(props: dict, required: list[str] | None = None) -> dict:
@@ -219,6 +258,12 @@ DECLS = [
     {"name": "learned_rule_candidates", "description": "リーダーの手修正のくり返しから見つけた、ルールの候補（根拠つき）", "parameters": _obj({})},
     {"name": "analytics_stats", "description": "過去の履歴の集計（BigQuery）。kind: offer_acceptance_by_shift=勤務区分ごとの応諾率 / offer_acceptance_by_lead=余裕時間ごとの応諾率 / vacancies_by_month=月ごとの欠員 / removal_hotspots=勤務を外した回数の多い人×曜日 / night_counts_by_staff=夜勤回数の多い人",
      "parameters": _obj({"kind": {"type": "string", "enum": ["offer_acceptance_by_shift", "offer_acceptance_by_lead", "vacancies_by_month", "removal_hotspots", "night_counts_by_staff"]}}, ["kind"])},
+    {"name": "history_insights", "description": "過去の履歴の詳しい集計（BigQuery の決まった集計）。kind: "
+     + " / ".join(f"{k}={v[0]}" for k, v in insights_mod.QUERIES.items())
+     + "。staff_id は staff_acceptance のときだけ1人に絞る。months は何か月さかのぼるか（既定12、モデルの2つには効かない）",
+     "parameters": _obj({"kind": {"type": "string", "enum": list(insights_mod.QUERIES)},
+                         "staff_id": {**_S, "description": "従業員ID（例 HDM-007）。staff_acceptance のときだけ"},
+                         "months": {"type": "integer", "description": "さかのぼる月数（1〜36、既定12）"}}, ["kind"])},
     {"name": "propose_edit", "description": "勤務表の手修正を提案する（実行はしない）。to_shift は 早番・日勤・遅番・夜勤・休",
      "parameters": _obj({"staff_id": _S, "date": _D, "to_shift": _S, "reason": _S}, ["staff_id", "date", "to_shift"])},
     {"name": "propose_offer", "description": "欠員の補充として、ある人への打診を提案する（実行はしない）", "parameters": _obj({"vacancy_id": _S, "staff_id": _S}, ["vacancy_id", "staff_id"])},

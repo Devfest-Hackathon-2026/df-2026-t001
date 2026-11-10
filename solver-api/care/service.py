@@ -362,7 +362,9 @@ class Svc:
 
     def _apply_model(self, fac: Facility, ro: dict, vac: dict, ok: list[dict]) -> list[dict]:
         """champion モデルがあれば、応諾確率で順位をつける。無ければ従来のスコア順（理由に『モデルなし』は出さない）。"""
-        art = self.models.champion(fac.facility_id) if self.models else None
+        from .learn import ab
+
+        art, abinfo = ab.choose(self.models, fac.facility_id, vac.get("vacancy_id"))     # A/B が無効なら champion（従来どおり）
         if not art or not ok:
             ok.sort(key=lambda x: -x["score"])
             return ok
@@ -376,6 +378,8 @@ class Svc:
             if top:
                 c["reasons"].append("影響の大きい要因: " + "、".join(top))
             c["rank_score"] = round(p - 0.03 * sum(1 for r in c["reasons"] if r.startswith("次のルールが新たに")), 4)
+            if abinfo:
+                c["model_arm"] = abinfo["arm"]
         ok.sort(key=lambda x: -x["rank_score"])
         return ok
 
@@ -458,7 +462,14 @@ class Svc:
         if not self.repo.transition_vacancy(fid, vid, OPEN_STATES, {"state": "offering"}):
             self.repo.update_offer(fid, vid, doc["offer_id"], {"status": "expired", "responded_at": now()})
             raise ServiceError(409, "この欠員はすでに埋まっています")
-        self.events.emit(fid, "offer_sent", {"staff_id": staff_id, "rank": doc["rank"], "features": feats}, vid)
+        payload = {"staff_id": staff_id, "rank": doc["rank"], "features": feats}
+        if self.models:                         # A/B（AB_CHALLENGER_SHARE）が有効なときだけ、順位付けに使った腕を残す
+            from .learn import ab
+
+            _, abinfo = ab.choose(self.models, fid, vid)
+            if abinfo:
+                payload["ab"] = abinfo
+        self.events.emit(fid, "offer_sent", payload, vid)
         return doc
 
     def respond(self, fid: str, vid: str, oid: str, status: str) -> dict:

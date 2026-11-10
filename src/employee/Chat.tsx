@@ -3,6 +3,7 @@ import type { State } from '../core/store';
 import { askShiftMaker, cancelProposal, confirmProposal, sendMessage, undoProposal } from '../core/store';
 import { MY_ID, SHIFTS, SHIFT_ORDER, STAFF, staffById, unitName } from '../core/facility';
 import { Icon, Modal } from '../shared/ui';
+import { VoiceButton } from '../shared/VoiceButton';
 import type { AiItem, ChatMessage, ShiftRequest } from '../core/types';
 import { Ctx, senderName } from './common';
 import { ACTIONS, ActionGrid, AiSheet } from './AiFlow';
@@ -168,6 +169,7 @@ export function Chat({ s, c }: { s: State; c: Ctx }) {
               : <><button class="iconbtn tonalic" aria-label="写真を添付" onClick={() => file.current?.click()}><Icon n="photo_camera" /></button><input ref={file} type="file" accept="image/*" capture="environment" multiple hidden onChange={onFiles} /></>}
             <textarea class="input" rows={1} placeholder={`${th.title}へ送信`} aria-label={`${th.title}へ送信`} value={text} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !(e as KeyboardEvent).isComposing) { e.preventDefault(); send(); } }} />
+            {isAi && <VoiceButton target="employee" class="iconbtn tonalic" onText={setText} onError={(m) => c.toast(m)} />}
             <button class="btn pri" style="min-width:48px;padding:0 16px" disabled={!text.trim() && !atts.length} onClick={send} aria-label="送信"><Icon n="send" /></button>
           </div>
         </>

@@ -66,7 +66,7 @@ export interface VacancyRes { vacancy: { vacancy_id: string; date: string; shift
 export interface OfferRes { offer_id: string; staff_id: string; status: string; features?: Record<string, number | string | boolean> }
 export interface ModelInfo {
   using_model: boolean; note: string | null;
-  champion: { version: string; kind: string; rows: number; auc: number | null; logloss_gain: number | null; trained_at: string; compared: Record<string, { auc: number; logloss: number }>; gate?: { passed: boolean; reasons: string[] } } | null;
+  champion: { version: string; kind: string; model_type?: string; rows: number; auc: number | null; logloss_gain: number | null; trained_at: string; compared: Record<string, { auc: number; logloss: number }>; gate?: { passed: boolean; reasons: string[] } } | null;
   history: { version: string; rows: number; live_rows?: number; kind: string; auc: number | null; gate_passed: boolean; gate_reasons?: string[]; promoted: boolean; trained_at: string }[];
 }
 export interface Proposal { type: string; summary: string; action: { method: 'POST'; path: string; body: unknown }; preview: { new_rule_breaks?: { label: string; strength: string }[]; hard_break?: boolean; is_candidate?: boolean; reasons?: string[]; excluded_reason?: string | null }; executed: boolean }

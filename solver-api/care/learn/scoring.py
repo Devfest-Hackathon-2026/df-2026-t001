@@ -1,6 +1,7 @@
 """学習済みモデル（JSON の成果物）を純 Python で採点する。API は scikit-learn / xgboost を持たない。
 
 * logistic: 標準化 → 係数 → シグモイド
+* BigQuery ML 由来の成果物も kind は logistic / xgboost（model_type に bqml_* が入る。bqml.py）
 * xgboost : ブースターを JSON にダンプした木を、そのまま辿って足し合わせる（テストで xgboost 本体の予測と一致を確認）
 """
 from __future__ import annotations
@@ -33,9 +34,12 @@ def _tree(node: dict, x: list[float], names: list[str]) -> float:
     return float(node["leaf"])
 
 
+LOGISTIC = ("logistic", "pooled_logistic")
+
+
 def predict(art: dict, r: dict) -> float:
     x = row_features(r, {k: v for k, v in art["staff_stats"].items()}, art["base_rate"])
-    if art["kind"] in ("logistic", "pooled_logistic"):
+    if art["kind"] in LOGISTIC:
         z = art["intercept"] + sum(c * (v - m) / s for c, v, m, s in zip(art["coef"], x, art["scaler"]["mean"], art["scaler"]["scale"]))
         return _sig(z)
     names = art["features"]
@@ -45,7 +49,7 @@ def predict(art: dict, r: dict) -> float:
 
 def explain(art: dict, r: dict, top: int = 3) -> list[tuple[str, float]]:
     """logistic のとき、確率への寄与が大きい特徴量（名前, 寄与=係数×標準化した値）。xgboost は空。"""
-    if art["kind"] not in ("logistic", "pooled_logistic"):
+    if art["kind"] not in LOGISTIC:
         return []
     x = row_features(r, art["staff_stats"], art["base_rate"])
     contrib = [(n, c * (v - m) / s) for n, c, v, m, s in zip(FEATURES, art["coef"], x, art["scaler"]["mean"], art["scaler"]["scale"])]

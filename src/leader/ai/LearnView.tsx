@@ -4,7 +4,7 @@ import { FACILITIES, errText, get } from './api';
 import type { ModelInfo } from './api';
 
 const jst = (iso: string) => new Date(iso).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-const KIND: Record<string, string> = { logistic: 'ロジスティック回帰', xgboost: 'XGBoost', pooled_logistic: 'プール学習（他施設の打診も使用）', baseline: '基準（基本確率）' };
+const KIND: Record<string, string> = { logistic: 'ロジスティック回帰', xgboost: 'XGBoost', pooled_logistic: 'プール学習（他施設の打診も使用）', baseline: '基準（基本確率）', bqml_logistic_reg: 'BigQuery ML ロジスティック回帰', bqml_boosted_tree: 'BigQuery ML 勾配ブースティング木' };
 
 export function LearnView({ ctx }: { ctx: Ctx }) {
   const [infos, setInfos] = useState<Record<string, ModelInfo>>({});
@@ -28,7 +28,7 @@ export function LearnView({ ctx }: { ctx: Ctx }) {
           <div class="row spread"><b style="font-weight:500">{f.name}</b>{m && <span class={`chip ${m.using_model ? 'ok' : 'warn'}`}>{m.using_model ? '学習済みモデルを使用中' : '昇格できず（従来の順位付け）'}</span>}</div>
           {!m && <p class="muted">読み込み中…</p>}
           {c && <><div class="sv-kpis"><div class="sv-kpi"><b>{c.auc?.toFixed(2)}</b><span>AUC（0.5=当てずっぽう）</span></div><div class="sv-kpi"><b>{c.logloss_gain !== null ? `+${(c.logloss_gain * 100).toFixed(1)}%` : '-'}</b><span>基準より対数損失がよい</span></div><div class="sv-kpi"><b>{c.rows}件</b><span>学習した打診</span></div></div>
-            <p class="small">採用: {KIND[c.kind] ?? c.kind}</p>
+            <p class="small">採用: {KIND[c.kind] ?? c.kind}{c.model_type?.startsWith('bqml') ? '（BigQuery ML で学習）' : ''}</p>
             <table class="sv-table"><thead><tr><th>比べた候補</th><th>AUC</th></tr></thead><tbody>{Object.entries(c.compared).map(([k, v]) => <tr key={k}><td>{KIND[k] ?? k}{k === c.kind ? ' ✓' : ''}</td><td>{v.auc.toFixed(3)}</td></tr>)}</tbody></table></>}
           {m && !c && <p class="small" style="margin-top:6px">{m.note}</p>}
           {m && m.history.length > 0 && <><p class="small" style="margin-top:10px">学習の履歴</p><table class="sv-table"><thead><tr><th>実行</th><th>件数</th><th>AUC</th><th>昇格</th></tr></thead>

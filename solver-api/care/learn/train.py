@@ -149,3 +149,46 @@ def train_facility(fid: str, rows: list[dict], *, version: str | None = None, se
                       **{k: {m: round(cv[k][m], 4) for m in ("auc", "logloss", "brier")} for k in (*cands, "baseline")}}
     art["gate"] = {"passed": not reasons, "reasons": reasons}
     return {"artifact": art, "oof": cv[best]["oof"].tolist(), "oof_kind": best, "sk": sk, "registry_model": registry_model}
+
+
+# ---------------------------------------------------------------- 固定の評価データ（BigQuery ML との比較用）
+EVAL_MOD = 5          # 欠員 ID のハッシュで 1/5 を評価用に取り置く（同じ欠員の打診は必ず同じ側に入る）
+
+
+def is_eval(vacancy_id: str) -> bool:
+    import hashlib
+
+    return int(hashlib.sha256(f"eval:{vacancy_id}".encode()).hexdigest()[:8], 16) % EVAL_MOD == 0
+
+
+def split_holdout(rows: list[dict]) -> tuple[list[dict], list[dict]]:
+    tr = [r for r in rows if not is_eval(str(r["vacancy_id"]))]
+    ev = [r for r in rows if is_eval(str(r["vacancy_id"]))]
+    return tr, ev
+
+
+def holdout_matrices(tr: list[dict], ev: list[dict]):
+    """BigQuery ML に渡す特徴量。学習側は自分を除いた統計（leave-one-out）、評価側は学習側の統計。交差検証と同じ作り方。"""
+    stats, base = _stats(tr)
+    return _matrix(tr, stats, base, loo=True), _matrix(ev, stats, base, loo=False), stats, base
+
+
+def holdout_predict(kind: str, tr: list[dict], ev: list[dict], other_rows: list[dict] | None = None) -> np.ndarray:
+    """いまの学習（kind）を学習側だけで作り直し、評価側を予測する。BigQuery ML と同じ評価データで比べるため。"""
+    if kind == POOLED and other_rows:
+        pool = tr + other_rows
+        pst, pbase = _stats(pool)
+        m = _fit_logistic(_matrix(pool, pst, pbase, loo=True), np.array([label(r) for r in pool]))
+        return _proba(m, _matrix(ev, pst, pbase, loo=False))
+    stats, base = _stats(tr)
+    if kind not in FITTERS:
+        kind = "logistic"
+    m = FITTERS[kind](_matrix(tr, stats, base, loo=True), np.array([label(r) for r in tr]))
+    return _proba(m, _matrix(ev, stats, base, loo=False))
+
+
+def score_probs(y, p) -> dict:
+    p = np.clip(np.asarray(p, dtype=float), 1e-4, 1 - 1e-4)
+    y = np.asarray(y)
+    auc = float(roc_auc_score(y, p)) if len(set(y.tolist())) > 1 and len(set(np.round(p, 9).tolist())) > 1 else 0.5
+    return {"auc": round(auc, 4), "logloss": round(float(log_loss(y, p, labels=[0, 1])), 4), "brier": round(float(brier_score_loss(y, p)), 4), "n": int(len(y))}

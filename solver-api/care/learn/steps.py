@@ -2,7 +2,10 @@
 
   extract   BigQuery → 学習データ（打診の履歴＋実運用の打診の結果）を GCS に
   train     施設ごとに学習（ロジスティック / XGBoost / プール学習を交差検証で比べる）→ 成果物を GCS に
-  promote   基準を満たした成果物を champion にし、Model Registry に登録、履歴と out-of-fold 予測を BigQuery に
+  compare   BigQuery ML（LOGISTIC_REG / BOOSTED_TREE_CLASSIFIER）を作り、いまのモデルと同じ評価データで比べる → champion / challenger を決める
+            （学習データは extract の offers.json。live_sources・上限の条件は extract で効いたものがそのまま使われる）
+  promote   champion を置き、challenger も置く（A/B 用）。Model Registry に登録、Vertex AI Experiments に指標、履歴と out-of-fold 予測を BigQuery に
+  publish=False（プレビュー）のとき: GCS はすべて root の下だけ、BigQuery は *_preview の表・モデル、Model Registry には登録しない
   detect    手修正のくり返しを検出 → ルール候補を GCS と BigQuery に
 
 成果物は gs://<root>/models/<施設>/champion.json（API が読む）。履歴は history.json、反復検出は learned/<施設>.json。
@@ -13,6 +16,8 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
+
+from .bqml import model_type as bqml_model_type
 
 DATASET = "care_ml"
 log = logging.getLogger("care.learn")
@@ -127,7 +132,10 @@ def rid(run_id: str) -> str:
 
 RUNS_SCHEMA = [("facility_id", "STRING"), ("version", "STRING"), ("rows", "INTEGER"), ("live_rows", "INTEGER"), ("kind", "STRING"),
                ("auc", "FLOAT"), ("logloss", "FLOAT"), ("baseline_logloss", "FLOAT"), ("gate_passed", "BOOLEAN"), ("promoted", "BOOLEAN"),
-               ("run_at", "TIMESTAMP"), ("gate_reasons", "STRING")]
+               ("run_at", "TIMESTAMP"), ("gate_reasons", "STRING"),
+               # BigQuery ML との比較（compare）。列は後から足した（既存の行は NULL）
+               ("champion_source", "STRING"), ("challenger_kind", "STRING"), ("eval_rows", "INTEGER"), ("eval_logloss", "FLOAT"),
+               ("eval_auc", "FLOAT"), ("bqml_lr_eval_logloss", "FLOAT"), ("bqml_bt_eval_logloss", "FLOAT"), ("compare_json", "STRING")]
 SCORES_SCHEMA = [("facility_id", "STRING"), ("vacancy_id", "STRING"), ("staff_id", "STRING"), ("model_version", "STRING"), ("model_kind", "STRING"),
                  ("p_accept", "FLOAT"), ("label", "INTEGER"), ("scored_at", "TIMESTAMP")]
 CANDIDATES_SCHEMA = [("facility_id", "STRING"), ("key", "STRING"), ("kind", "STRING"), ("staff_id", "STRING"), ("evidence", "STRING"),
@@ -214,65 +222,317 @@ def train(project: str, root: str, run_id: str, facility_id: str) -> dict:
     return {"facility_id": facility_id, "uri": uri, "kind": art["kind"], "gate": art["gate"], "metrics": art.get("metrics", {}), "rows": len(own)}
 
 
+# ------------------------------------------------------------------ compare（BigQuery ML）
+def compare(project: str, root: str, run_id: str, facility_ids: list[str], allow_bqml: bool = True, publish: bool = True) -> list[dict]:
+    """BigQuery ML の 2 種を作り、いまのモデル（train の kind を学習側で作り直す）と同じ評価データで比べる。
+
+    結果は runs/<版>/compare/<施設>.json。BigQuery ML が champion / challenger になるときは、その成果物を runs/<版>/bqml/<施設>/ に置く。
+    BigQuery ML が失敗しても（権限・クォータなど）、いまのモデルの昇格は従来どおり進む。
+    """
+    import numpy as np
+    from google.cloud import bigquery
+
+    from . import bqml
+    from .train import MIN_ROWS, holdout_predict, label, score_probs, split_holdout
+
+    run_id = rid(run_id)
+    sfx = suffix(publish)
+    bq = bigquery.Client(project=project)
+    rows = json.loads(read_text(root, f"runs/{run_id}/offers.json"))      # extract の出力（live_sources・上限の条件はここで効いている）
+    plan, table_rows = {}, []
+    for fid in facility_ids:
+        own = [r for r in rows if r["facility_id"] == fid]
+        tr, ev = split_holdout(own)
+        if len(tr) < MIN_ROWS or len(ev) < 20 or len({label(r) for r in ev}) < 2:
+            plan[fid] = None
+            continue
+        frows, stats, base = bqml.feature_rows(fid, run_id, tr, ev)
+        table_rows += frows
+        plan[fid] = (own, tr, ev, stats, base)
+    if table_rows:
+        bq.load_table_from_json(table_rows, f"{project}.{DATASET}.{bqml.FEATURE_TABLE}{sfx}", job_config=bigquery.LoadJobConfig(
+            write_disposition="WRITE_TRUNCATE", schema=_schema(bqml.TABLE_SCHEMA))).result()
+    jobs = {}                                 # BigQuery ML の学習は数分かかるので、施設・種類ごとの CREATE MODEL を先に全部投げて並行させる
+    for fid in facility_ids:
+        if plan.get(fid) is not None:
+            for kind in bqml.KINDS:
+                try:
+                    jobs[(fid, kind)] = bq.query(bqml.create_sql(project, kind, fid, sfx))
+                except Exception as e:  # noqa: BLE001
+                    jobs[(fid, kind)] = e
+    out = []
+    for fid in facility_ids:
+        art = json.loads(read_text(root, f"runs/{run_id}/models/{fid}.json"))
+        res = {"facility_id": fid, "version": run_id, "current_kind": art["kind"], "current_gate_passed": art["gate"]["passed"], "holdout": {}, "bqml": {},
+               "errors": {}, "decision": {"champion": "current" if art["gate"]["passed"] else None, "challenger": None}}
+        if plan.get(fid) is None:
+            res["skipped"] = "評価データが足りません"
+            write_text(root, f"runs/{run_id}/compare/{fid}.json", json.dumps(res, ensure_ascii=False))
+            out.append(res)
+            continue
+        own, tr, ev, stats, base = plan[fid]
+        other = [r for r in rows if r["facility_id"] != fid]
+        y = [label(r) for r in ev]
+        res.update(train_rows=len(tr), eval_rows=len(ev))
+        res["holdout"]["baseline"] = score_probs(y, np.full(len(ev), sum(label(r) for r in tr) / len(tr)))
+        cur_kind = art["kind"] if art["kind"] != "baseline" else "logistic"
+        res["holdout"]["current"] = {**score_probs(y, holdout_predict(cur_kind, tr, ev, other)), "kind": cur_kind}
+        for kind in bqml.KINDS:
+            try:
+                job = jobs[(fid, kind)]
+                if isinstance(job, Exception):
+                    raise job
+                _wait(job)
+                probs = [r.p for r in bq.query(bqml.predict_sql(project, kind, fid, sfx)).result()]
+                m = score_probs(y, probs)
+                c = {"holdout": m, "gate": bqml.gate(m, res["holdout"]["baseline"]), "model": bqml.model_id(project, kind, fid, sfx), "verified": False}
+                export = f"{root}/runs/{run_id}/bqml/{fid}/{kind}"
+                bq.query(f"EXPORT MODEL `{c['model']}` OPTIONS(URI='{export}/model')").result()      # Model Registry 用にも使う
+                c["export_uri"] = f"{export}/model"
+                if kind == "bqml_logistic_reg":
+                    w = {r.processed_input: r.weight for r in bq.query(bqml.weights_sql(project, fid, sfx)).result()}
+                    ba = bqml.lr_artifact(art, w, stats, base, run_id, len(tr))
+                else:
+                    ba = _bt_from_export(root, f"runs/{run_id}/bqml/{fid}/{kind}/model", art, stats, base, run_id, len(tr))
+                c["verify_max_diff"] = round(bqml.verify(ba, ev, probs), 6)
+                c["verified"] = c["verify_max_diff"] <= bqml.VERIFY_TOL
+                ba["metrics"] = {"chosen": kind, kind: m, "baseline": res["holdout"]["baseline"], "current_on_eval": res["holdout"]["current"],
+                                 "logloss_gain_vs_baseline": round((res["holdout"]["baseline"]["logloss"] - m["logloss"]) / res["holdout"]["baseline"]["logloss"], 4),
+                                 "evaluated_on": f"評価データ {len(ev)} 件（欠員 ID のハッシュで取り置き）"}
+                ba["gate"] = {"passed": not c["gate"] and c["verified"], "reasons": c["gate"] + ([] if c["verified"] else ["採点の変換が ML.PREDICT と一致しない"])}
+                write_text(root, f"runs/{run_id}/bqml/{fid}/{kind}.json", json.dumps(ba, ensure_ascii=False))
+                res["bqml"][kind] = c
+            except Exception as e:  # noqa: BLE001  BigQuery ML が使えなくても、いまのモデルの昇格は止めない
+                res["errors"][kind] = f"{type(e).__name__}: {str(e)[:300]}"
+                print(f"[compare] {fid} {kind} failed: {e}")
+        res["decision"] = bqml.decide({"kind": cur_kind, "gate_passed": art["gate"]["passed"], "holdout": res["holdout"]["current"]},
+                                      res["bqml"], allow_bqml=allow_bqml)
+        write_text(root, f"runs/{run_id}/compare/{fid}.json", json.dumps(res, ensure_ascii=False))
+        out.append(res)
+    return out
+
+
+def _wait(job, limit: float = 1800.0) -> None:
+    """BigQuery ML の学習は長い。状態を自分で問い合わせて待つ（クライアントの長い待ちに頼らない）。"""
+    import time
+
+    t0 = time.time()
+    while not job.done(reload=True):
+        if time.time() - t0 > limit:
+            raise TimeoutError(f"{job.job_id} が {limit:.0f} 秒で終わりませんでした")
+        time.sleep(10)
+    job.result()
+
+
+def _bt_from_export(root: str, path: str, art: dict, stats: dict, base: float, run_id: str, n_train: int) -> dict:
+    import tempfile
+
+    import xgboost as xgb
+
+    from . import bqml
+
+    b, p = _bucket(root)
+    with tempfile.TemporaryDirectory() as d:
+        b.blob(_key(p, f"{path}/model.bst")).download_to_filename(f"{d}/model.bst")
+        booster = xgb.Booster()
+        booster.load_model(f"{d}/model.bst")
+    names, classes = None, None
+    meta = read_text(root, f"{path}/assets/model_metadata.json")
+    if meta:
+        md = json.loads(meta)
+        names, classes = md.get("feature_names") or None, md.get("class_names") or None
+    return bqml.bt_artifact(art, booster, names, stats, base, run_id, n_train, class_names=classes)
+
+
 # ------------------------------------------------------------------ promote
-def promote(project: str, root: str, run_id: str, facility_ids: list[str], location: str = "asia-northeast1", strict_registry: bool = True) -> list[dict]:
+CONTAINERS = {**SERVING_IMAGES,          # BigQuery ML のロジスティック回帰は TensorFlow の SavedModel で書き出される
+              "tensorflow": os.getenv("REGISTRY_TF_IMAGE", "us-docker.pkg.dev/vertex-ai/prediction/tf2-cpu.2-15:latest")}
+
+
+def suffix(publish: bool) -> str:
+    """プレビュー（publish=False）の BigQuery の表・モデルの接尾辞。本番の表には書かない。"""
+    return "" if publish else "_preview"
+
+
+def _choose(root: str, run_id: str, fid: str, art: dict) -> tuple[dict, dict | None, dict | None]:
+    """(champion にする成果物, challenger の成果物, 比較結果)。比較結果が無ければ従来どおり（いまのモデルだけ）。"""
+    t = read_text(root, f"runs/{run_id}/compare/{fid}.json")
+    cmp = json.loads(t) if t else None
+    if not cmp:
+        return art, None, None
+
+    def load(k):
+        if k == "current":
+            return art
+        x = read_text(root, f"runs/{run_id}/bqml/{fid}/{k}.json")
+        return json.loads(x) if x else None
+    dec = cmp.get("decision") or {}
+    champ = load(dec["champion"]) if dec.get("champion") else art
+    chall = load(dec["challenger"]) if dec.get("challenger") else None
+    return champ or art, chall, cmp
+
+
+def promote(project: str, root: str, run_id: str, facility_ids: list[str], location: str = "asia-northeast1",
+            experiment: str | None = "care-acceptance", strict_registry: bool = True, publish: bool = True) -> list[dict]:
+    """publish=False（プレビュー）: champion などは root の下にだけ書く（API が読む本番の root を指さないこと）。
+    BigQuery は *_preview の表、Model Registry には登録しない、Experiments は実行名に preview を付ける。"""
     from google.cloud import bigquery
 
     run_id = rid(run_id)
     bq = bigquery.Client(project=project)
     results, runs, scores, failures = [], [], [], []
+    sfx = suffix(publish)
     for fid in facility_ids:
-        art = json.loads(read_text(root, f"runs/{run_id}/models/{fid}.json"))
+        cur = json.loads(read_text(root, f"runs/{run_id}/models/{fid}.json"))
+        art, chall, cmp = _choose(root, run_id, fid, cur)
         passed = art["gate"]["passed"]
         hist = json.loads(read_text(root, f"models/{fid}/history.json") or "[]")
         m = art.get("metrics", {})
-        chosen = m.get(art["kind"], {}) if art["kind"] != "baseline" else {}
-        entry = {"version": run_id, "trained_at": art["trained_at"], "rows": art["n_rows"], "live_rows": art.get("data", {}).get("live_rows", 0),
-                 "kind": art["kind"], "auc": chosen.get("auc"), "logloss": chosen.get("logloss"), "baseline_logloss": m.get("baseline", {}).get("logloss"),
-                 "logloss_gain": m.get("logloss_gain_vs_baseline"), "gate_passed": passed, "gate_reasons": art["gate"]["reasons"], "promoted": passed}
+        mt = bqml_model_type(art)
+        chosen = m.get(mt, m.get(art["kind"], {})) if art["kind"] != "baseline" else {}
+        source = "bigquery_ml" if art.get("source") == "bigquery_ml" else "python"
+        entry = {"version": run_id, "trained_at": art["trained_at"], "rows": art["n_rows"], "live_rows": cur.get("data", {}).get("live_rows", 0),
+                 "kind": mt, "auc": chosen.get("auc"), "logloss": chosen.get("logloss"), "baseline_logloss": m.get("baseline", {}).get("logloss"),
+                 "logloss_gain": m.get("logloss_gain_vs_baseline"), "gate_passed": passed, "gate_reasons": art["gate"]["reasons"], "promoted": passed,
+                 "champion_source": source, "challenger_kind": bqml_model_type(chall) if chall else None}
+        if cmp and cmp.get("holdout"):
+            entry["compared_on_eval"] = {"current": cmp["holdout"].get("current"), "baseline": cmp["holdout"].get("baseline"),
+                                         **{k: v["holdout"] for k, v in cmp.get("bqml", {}).items()}}
         hist.append(entry)
         write_text(root, f"models/{fid}/history.json", json.dumps(hist, ensure_ascii=False))
         registry, reg_error = None, None
         if passed:
             write_text(root, f"models/{fid}/champion.json", json.dumps(art, ensure_ascii=False))
-            fmt = "xgboost" if art["kind"] == "xgboost" else "sklearn"
+        # challenger（A/B 用）。無ければ消す（古い challenger を使い続けない）
+        if passed and chall and chall.get("gate", {}).get("passed"):
+            write_text(root, f"models/{fid}/challenger.json", json.dumps(chall, ensure_ascii=False))
+        else:
+            delete(root, f"models/{fid}/challenger.json")
+        # Model Registry: 基準を満たしたものは champion、満たさなかったものも candidate として残す（履歴として比べられるように）
+        uri, fmt = _registry_artifact(root, run_id, fid, art, cmp)
+        if uri and publish:
             try:
-                registry = register(project, location, fid, art, f"{root}/runs/{run_id}/registry/{fid}/{REGISTRY_FILES[fmt]}", run_id, fmt=fmt)
+                registry = register(project, location, fid, art, uri, run_id, fmt=fmt, champion=passed)
             except Exception as e:  # noqa: BLE001  champion と履歴は書き終えてから、最後に失敗として伝える
                 log.exception("[register] %s failed", fid)
                 reg_error = f"{type(e).__name__}: {str(e)[:300]}"
-                failures.append((fid, reg_error))
+                if passed:                          # champion の登録の失敗は実行を失敗にする（candidate の失敗は記録だけ）
+                    failures.append((fid, reg_error))
+        h = (cmp or {}).get("holdout", {})
+        bqm = (cmp or {}).get("bqml", {})
         runs.append({**{k: entry[k] for k in ("version", "rows", "live_rows", "kind", "auc", "logloss", "baseline_logloss", "gate_passed")},
-                     "facility_id": fid, "promoted": passed, "run_at": datetime.now(timezone.utc).isoformat(), "gate_reasons": "; ".join(art["gate"]["reasons"])})
+                     "facility_id": fid, "promoted": passed, "run_at": datetime.now(timezone.utc).isoformat(), "gate_reasons": "; ".join(art["gate"]["reasons"]),
+                     "champion_source": source, "challenger_kind": entry["challenger_kind"], "eval_rows": (cmp or {}).get("eval_rows"),
+                     "eval_logloss": (h.get("current") or {}).get("logloss"), "eval_auc": (h.get("current") or {}).get("auc"),
+                     "bqml_lr_eval_logloss": (bqm.get("bqml_logistic_reg") or {}).get("holdout", {}).get("logloss"),
+                     "bqml_bt_eval_logloss": (bqm.get("bqml_boosted_tree") or {}).get("holdout", {}).get("logloss"),
+                     "compare_json": json.dumps({"holdout": h, "bqml": {k: {x: v.get(x) for x in ("holdout", "gate", "verified", "verify_max_diff")}
+                                                                         for k, v in bqm.items()},
+                                                 "errors": (cmp or {}).get("errors"), "decision": (cmp or {}).get("decision")}, ensure_ascii=False) if cmp else None})
         oof = read_text(root, f"runs/{run_id}/oof/{fid}.json")
         if oof:
             scores += json.loads(oof)
-        results.append({"facility_id": fid, "promoted": passed, "kind": art["kind"], "registry": registry, "registry_error": reg_error})
-    if runs:                                  # スキーマは明示する（型の自動判定に頼らない）
-        bq.load_table_from_json(runs, f"{project}.{DATASET}.model_runs", job_config=bigquery.LoadJobConfig(
-            write_disposition="WRITE_APPEND", schema=_schema(RUNS_SCHEMA))).result()
+        results.append({"facility_id": fid, "promoted": passed, "kind": mt, "source": source, "challenger": entry["challenger_kind"], "registry": registry,
+                        "registry_error": reg_error})
+        log_experiment(project, location, experiment, run_id + ("" if publish else "-preview"), fid, cur, art, cmp, passed)
+    if runs:                                  # スキーマは明示する（型の自動判定に頼らない）。比較の列は後から足したので、列の追加を許す
+        bq.load_table_from_json(runs, f"{project}.{DATASET}.model_runs{sfx}", job_config=bigquery.LoadJobConfig(
+            write_disposition="WRITE_APPEND", schema=_schema(RUNS_SCHEMA),
+            schema_update_options=["ALLOW_FIELD_ADDITION"])).result()
     if scores:
-        bq.load_table_from_json(scores, f"{project}.{DATASET}.offer_scores", job_config=bigquery.LoadJobConfig(
+        bq.load_table_from_json(scores, f"{project}.{DATASET}.offer_scores{sfx}", job_config=bigquery.LoadJobConfig(
             write_disposition="WRITE_APPEND", schema=_schema(SCORES_SCHEMA))).result()
     if failures and strict_registry:                # 黙って失敗しない。パイプラインの実行を失敗にして気づけるようにする（champion は更新済み）
         raise RuntimeError(f"Model Registry への登録に失敗: {failures}")
     return results
 
 
-def register(project: str, location: str, fid: str, art: dict, artifact_uri: str, run_id: str, fmt: str = "sklearn") -> str:
-    """Vertex AI Model Registry に登録（モデルは API が読み込むのでデプロイはしない）。失敗は例外で呼び出し側に伝える。"""
+def delete(root: str, path: str) -> None:
+    if read_text(root, path) is None:
+        return
+    try:
+        b, p = _bucket(root)
+        blob = b.blob(_key(p, path))
+        if blob.exists():
+            blob.delete()
+    except Exception as e:  # noqa: BLE001
+        print(f"[delete] {path}: {e}")
+
+
+def _registry_artifact(root: str, run_id: str, fid: str, art: dict, cmp: dict | None) -> tuple[str | None, str]:
+    """(Model Registry に渡すファイル, 形式)。register はそのファイルのディレクトリを渡す。"""
+    if art.get("source") == "bigquery_ml":
+        c = (cmp or {}).get("bqml", {}).get(bqml_model_type(art), {})
+        if not c.get("export_uri"):
+            return None, ""
+        fmt = "xgboost" if art["kind"] == "xgboost" else "tensorflow"
+        return f"{c['export_uri']}/{'model.bst' if fmt == 'xgboost' else 'saved_model.pb'}", fmt
+    if art["kind"] == "baseline":                # 件数が少なすぎてモデルが無い
+        return None, ""
+    fmt = "xgboost" if art["kind"] == "xgboost" else "sklearn"
+    return f"{root}/runs/{run_id}/registry/{fid}/{REGISTRY_FILES[fmt]}", fmt
+
+
+def register(project: str, location: str, fid: str, art: dict, artifact_uri: str, run_id: str, fmt: str = "sklearn", *,
+             champion: bool = True) -> str:
+    """Vertex AI Model Registry に登録（モデルは API が読み込むのでデプロイはしない）。失敗は例外で呼び出し側に伝える。
+
+    champion=False（基準を満たさない）でも candidate として版を残す。既定の版にはしない（champion の版を動かさない）。
+    """
     from google.cloud import aiplatform
 
     aiplatform.init(project=project, location=location)
     existing = aiplatform.Model.list(filter=f'display_name="care-acceptance-{fid}"')
     gate = art.get("metrics", {})
     model = aiplatform.Model.upload(
-        display_name=f"care-acceptance-{fid}", artifact_uri=artifact_uri.rsplit("/", 1)[0],
-        serving_container_image_uri=SERVING_IMAGES[fmt],
-        parent_model=existing[0].resource_name if existing else None, is_default_version=True, version_aliases=["champion"],
-        version_description=f"{art['kind']} / rows={art['n_rows']} / logloss_gain={gate.get('logloss_gain_vs_baseline')}",
-        labels={"facility": fid.replace("fac-", ""), "kind": art["kind"].replace("_", "-"), "run": run_id.lower().replace("_", "-")[:60]})
+        display_name=f"care-acceptance-{fid}", artifact_uri=artifact_uri.rsplit("/", 1)[0], serving_container_image_uri=CONTAINERS[fmt],
+        parent_model=existing[0].resource_name if existing else None, is_default_version=champion or not existing,
+        version_aliases=["champion"] if champion else ["candidate"],
+        version_description=(f"{bqml_model_type(art)} / rows={art['n_rows']} / logloss_gain={gate.get('logloss_gain_vs_baseline')}"
+                             + ("" if champion else " / 基準を満たさず（API では使わない）")),
+        labels={"facility": fid.replace("fac-", ""), "kind": bqml_model_type(art).replace("_", "-"), "run": run_id.lower().replace("_", "-")[:60],
+                "gate": "passed" if champion else "failed", "source": "bqml" if art.get("source") == "bigquery_ml" else "python"})
     return model.versioned_resource_name
+
+
+def experiment_metrics(cur: dict, art: dict, cmp: dict | None, passed: bool) -> tuple[dict, dict]:
+    """Vertex AI Experiments に記録する (params, metrics)。数値だけ（個人の情報は入れない）。"""
+    m = cur.get("metrics", {})
+    params = {"current_kind": cur["kind"], "champion_kind": bqml_model_type(art), "champion_source": art.get("source", "python"),
+              "challenger": ((cmp or {}).get("decision") or {}).get("challenger") or "none"}
+    met: dict[str, float] = {"rows": float(cur["n_rows"]), "live_rows": float(cur.get("data", {}).get("live_rows", 0)),
+                             "gate_passed": 1.0 if passed else 0.0}
+    for k in ("logistic", "xgboost", "pooled_logistic", "baseline"):
+        for x in ("auc", "logloss", "brier"):
+            if isinstance(m.get(k), dict) and m[k].get(x) is not None:
+                met[f"cv_{k}_{x}"] = float(m[k][x])
+    if m.get("logloss_gain_vs_baseline") is not None:
+        met["cv_logloss_gain_vs_baseline"] = float(m["logloss_gain_vs_baseline"])
+    if cmp and cmp.get("holdout"):
+        met["eval_rows"] = float(cmp.get("eval_rows") or 0)
+        for k, v in [*cmp["holdout"].items(), *((k, c["holdout"]) for k, c in cmp.get("bqml", {}).items())]:
+            for x in ("auc", "logloss"):
+                if v.get(x) is not None:
+                    met[f"eval_{k}_{x}"] = float(v[x])
+    return params, met
+
+
+def log_experiment(project: str, location: str, experiment: str | None, run_id: str, fid: str, cur: dict, art: dict, cmp: dict | None, passed: bool) -> None:
+    """Vertex AI Experiments に、施設ごとに 1 つの実行として指標を残す。失敗しても昇格は止めない。"""
+    if not experiment:
+        return
+    try:
+        from google.cloud import aiplatform
+
+        params, met = experiment_metrics(cur, art, cmp, passed)
+        aiplatform.init(project=project, location=location, experiment=experiment,
+                        experiment_description="施設ごとの応諾予測（交差検証・BigQuery ML との比較）")
+        name = f"{run_id}-{fid}".lower().replace("_", "-")[:120]
+        with aiplatform.start_run(name, resume=False) as r:
+            r.log_params({**params, "facility_id": fid, "version": run_id})
+            r.log_metrics(met)
+    except Exception as e:  # noqa: BLE001
+        print(f"[experiment] skipped: {e}")
 
 
 # ------------------------------------------------------------------ detect
@@ -303,7 +563,7 @@ TASK_EDITS_SQL = """SELECT task_edit_id, staff_id, CAST(date AS STRING) AS date,
 
 
 def detect(project: str, root: str, facility_ids: list[str], live_sources: str = "", cap_per_staff: int = DEFAULT_CAP_PER_STAFF,
-           cap_per_ip: int = DEFAULT_CAP_PER_IP) -> list[dict]:
+           cap_per_ip: int = DEFAULT_CAP_PER_IP, publish: bool = True) -> list[dict]:
     from google.cloud import bigquery
 
     from .detect import detect_daily, detect_roster
@@ -324,7 +584,7 @@ def detect(project: str, root: str, facility_ids: list[str], live_sources: str =
                       "detected_at": datetime.now(timezone.utc).isoformat()} for c in cands]
         out.append({"facility_id": fid, "candidates": len(cands), "edits": len(edits)})
     if all_rows:
-        bq.load_table_from_json(all_rows, f"{project}.{DATASET}.learned_rule_candidates", job_config=bigquery.LoadJobConfig(
+        bq.load_table_from_json(all_rows, f"{project}.{DATASET}.learned_rule_candidates{suffix(publish)}", job_config=bigquery.LoadJobConfig(
             write_disposition="WRITE_TRUNCATE", schema=_schema(CANDIDATES_SCHEMA))).result()
     return out
 
@@ -333,5 +593,5 @@ if __name__ == "__main__":                       # 手元・コンテナでの�
     import sys
 
     step, args = sys.argv[1], sys.argv[2:]
-    fn = {"extract": extract, "train": train, "detect": detect}[step]
+    fn = {"extract": extract, "train": train, "compare": compare, "promote": promote, "detect": detect}[step]
     print(json.dumps(fn(*[json.loads(a) if a.startswith("[") else a for a in args]), ensure_ascii=False, default=str))

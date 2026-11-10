@@ -14,6 +14,7 @@ from starlette.concurrency import run_in_threadpool
 from . import guard
 from .ai.compose import register as register_compose
 from .ai.reasons import register as register_reasons
+from .ai.insights import make_insights
 from .ai.llm import GeminiLLM
 from .ai.service import AIService
 from .inline_solve import InlineSolveIn, solve_inline as _solve_inline
@@ -40,7 +41,7 @@ def ai() -> AIService:
     if os.getenv("AI_ENABLED", "1") == "0":
         raise ServiceError(503, "AI は無効に設定されています")
     if _ai is None:
-        _ai = AIService(svc(), GeminiLLM(), analytics=BQAnalytics())
+        _ai = AIService(svc(), GeminiLLM(), analytics=BQAnalytics(), insights=make_insights())
     return _ai
 
 
@@ -91,7 +92,7 @@ class BodyLimit:
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or not scope["path"].startswith("/api/v1"):
             return await self.app(scope, receive, send)
-        limit = guard.MAX_BODY
+        limit = guard.max_body(scope["path"])
         try:
             declared = int(dict(scope.get("headers") or []).get(b"content-length", b"0") or 0)
         except ValueError:
@@ -420,3 +421,12 @@ from .inline_replan import InlineReplanIn, replan_inline as _replan_inline  # no
 @app.post("/api/v1/replan-inline")
 async def replan_inline(body: InlineReplanIn):
     return await heavy(_replan_inline, body)
+
+
+from . import insights  # noqa: E402  分析タブ（BigQuery の分析ビュー、読み取り専用・短時間キャッシュ）。INSIGHTS_ENABLED=1 で有効。GET /api/v1/facilities/{fid}/insights
+
+insights.register(app)
+
+from .ai import grounding as _grounding, voice as _voice  # noqa: E402
+_grounding.register(app, ai, _ip)   # POST /api/v1/facilities/{fid}/ask-manual（GROUNDING_DATASTORE で有効。care/ai/grounding.py）
+_voice.register(app, ai, _ip)       # GET・POST /api/v1/voice（VOICE_ENABLED=1 で有効。care/ai/voice.py）

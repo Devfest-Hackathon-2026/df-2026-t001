@@ -68,7 +68,7 @@
 .fillh { position: absolute; right: -1px; bottom: -1px; width: 7px; height: 7px; background: #1a73e8; border: 1px solid #fff; cursor: crosshair; z-index: 1; }
 .pgrid .t.paid { background: #e3f4e8; color: #1e6b3a; border: 1px solid #9fd2ae; border-radius: 5px; }
 .pgrid .nm { width: 178px; min-width: 178px; max-width: 178px; box-sizing: border-box; } .nmc { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; } .nmc .sk { display: inline-flex; gap: 2px; } .nmc .pl { font-size: 10px; color: var(--tx2); } .nmc .pl.lack { color: #b3261e; font-weight: 500; }
-.pgrid .evrow th { height: 20px; font-weight: 400; } .pgrid .evl { display: inline-block; font-size: 10px; line-height: 16px; padding: 0 3px; border-radius: 4px; white-space: nowrap; }
+.pgrid .pg-evrow th { height: 20px; font-weight: 400; } .pgrid .evl { display: inline-block; font-size: 10px; line-height: 16px; padding: 0 3px; border-radius: 4px; white-space: nowrap; }
 .pgrid .evcol { background: #f3f6fd; } .pgrid td.evcol.selc { background: #dbe7fc; }
 .pgrid .shrow th { height: 22px; } .shb { width: 26px; height: 18px; border: 0; border-radius: 4px; font-size: 11px; cursor: pointer; background: transparent; color: #fff; } .shb.warn { background: #e8a33a; } .shb.short { background: var(--bad, #c5352b); } .shb.ok { background: #e6f1ea; }
 .dayfull { position: fixed; inset: 0; z-index: 80; background: var(--bg, #fff); display: flex; flex-direction: column; } .dayfull-h { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid var(--line); background: #fff; } .dayfull-b { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 12px 16px; overflow: hidden; }
@@ -96,3 +96,14 @@
 .pgrid-wrap::-webkit-scrollbar-thumb, .plancol::-webkit-scrollbar-thumb, .vdock > .stack::-webkit-scrollbar-thumb, .chatdock-body::-webkit-scrollbar-thumb, .scroll::-webkit-scrollbar-thumb { background: #d3d7dd; border-radius: 4px; }
 .pgrid-wrap::-webkit-scrollbar-track, .plancol::-webkit-scrollbar-track, .scroll::-webkit-scrollbar-track { background: transparent; }
 .pgrid-wrap.xl { max-height: calc(100vh - 300px); min-height: 280px; }
+/* 月の勤務表：不足のある日の列を色で示す */
+.pgrid td.col-short { background: #fdf1f0; } .pgrid td.col-warn { background: #fef9ec; }
+.pgrid th.dh.col-short { box-shadow: inset 0 -3px 0 var(--bad); } .pgrid th.dh.col-warn { box-shadow: inset 0 -3px 0 #e8a33a; }
+.pgrid td.col-short.selc, .pgrid td.col-warn.selc { background: #dbe7fc; }
+.pgrid .shrow .nm .small { white-space: normal; line-height: 1.2; font-size: 10px; display: block; }
+.plan .scard.sbtn { text-align: left; cursor: pointer; font: inherit; color: inherit; } .plan .scard.sbtn:hover { filter: brightness(.97); }
+/* 名前の欄：1行目に名前と有休、2行目にスキル（3段に折り返して行が高くなるのを防ぐ） */
+.pgrid .nmc { flex-wrap: wrap; row-gap: 1px; } .pgrid .nmc > .link { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.pgrid .nmc .pl { order: 2; margin-left: auto; } .pgrid .nmc .sk { order: 3; flex-basis: 100%; }
+.pgrid td.nm { padding-top: 2px; padding-bottom: 2px; }
+.shb.ok { background: transparent; cursor: default; }

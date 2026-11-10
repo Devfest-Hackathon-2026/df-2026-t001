@@ -1,0 +1,787 @@
+{
+  "components": {
+    "comp-compare-op": {
+      "executorLabel": "exec-compare-op",
+      "inputDefinitions": {
+        "parameters": {
+          "allow_bqml": {
+            "parameterType": "BOOLEAN"
+          },
+          "facility_ids": {
+            "parameterType": "LIST"
+          },
+          "project": {
+            "parameterType": "STRING"
+          },
+          "publish": {
+            "parameterType": "BOOLEAN"
+          },
+          "root": {
+            "parameterType": "STRING"
+          },
+          "run_id": {
+            "parameterType": "STRING"
+          }
+        }
+      },
+      "outputDefinitions": {
+        "artifacts": {
+          "summary": {
+            "artifactType": {
+              "schemaTitle": "system.Metrics",
+              "schemaVersion": "0.0.1"
+            }
+          }
+        }
+      }
+    },
+    "comp-detect-op": {
+      "executorLabel": "exec-detect-op",
+      "inputDefinitions": {
+        "parameters": {
+          "cap_per_ip": {
+            "parameterType": "NUMBER_INTEGER"
+          },
+          "cap_per_staff": {
+            "parameterType": "NUMBER_INTEGER"
+          },
+          "facility_ids": {
+            "parameterType": "LIST"
+          },
+          "live_sources": {
+            "parameterType": "STRING"
+          },
+          "project": {
+            "parameterType": "STRING"
+          },
+          "publish": {
+            "parameterType": "BOOLEAN"
+          },
+          "root": {
+            "parameterType": "STRING"
+          }
+        }
+      },
+      "outputDefinitions": {
+        "artifacts": {
+          "summary": {
+            "artifactType": {
+              "schemaTitle": "system.Metrics",
+              "schemaVersion": "0.0.1"
+            }
+          }
+        }
+      }
+    },
+    "comp-extract-op": {
+      "executorLabel": "exec-extract-op",
+      "inputDefinitions": {
+        "parameters": {
+          "cap_per_ip": {
+            "parameterType": "NUMBER_INTEGER"
+          },
+          "cap_per_staff": {
+            "parameterType": "NUMBER_INTEGER"
+          },
+          "live_sources": {
+            "parameterType": "STRING"
+          },
+          "project": {
+            "parameterType": "STRING"
+          },
+          "root": {
+            "parameterType": "STRING"
+          },
+          "run_id": {
+            "parameterType": "STRING"
+          }
+        }
+      },
+      "outputDefinitions": {
+        "artifacts": {
+          "out": {
+            "artifactType": {
+              "schemaTitle": "system.Dataset",
+              "schemaVersion": "0.0.1"
+            }
+          }
+        }
+      }
+    },
+    "comp-promote-op": {
+      "executorLabel": "exec-promote-op",
+      "inputDefinitions": {
+        "parameters": {
+          "experiment": {
+            "parameterType": "STRING"
+          },
+          "facility_ids": {
+            "parameterType": "LIST"
+          },
+          "project": {
+            "parameterType": "STRING"
+          },
+          "publish": {
+            "parameterType": "BOOLEAN"
+          },
+          "root": {
+            "parameterType": "STRING"
+          },
+          "run_id": {
+            "parameterType": "STRING"
+          }
+        }
+      },
+      "outputDefinitions": {
+        "artifacts": {
+          "summary": {
+            "artifactType": {
+              "schemaTitle": "system.Metrics",
+              "schemaVersion": "0.0.1"
+            }
+          }
+        }
+      }
+    },
+    "comp-train-op": {
+      "executorLabel": "exec-train-op",
+      "inputDefinitions": {
+        "artifacts": {
+          "data": {
+            "artifactType": {
+              "schemaTitle": "system.Dataset",
+              "schemaVersion": "0.0.1"
+            }
+          }
+        },
+        "parameters": {
+          "facility_id": {
+            "parameterType": "STRING"
+          },
+          "project": {
+            "parameterType": "STRING"
+          },
+          "root": {
+            "parameterType": "STRING"
+          },
+          "run_id": {
+            "parameterType": "STRING"
+          }
+        }
+      },
+      "outputDefinitions": {
+        "artifacts": {
+          "metrics": {
+            "artifactType": {
+              "schemaTitle": "system.Metrics",
+              "schemaVersion": "0.0.1"
+            }
+          },
+          "model": {
+            "artifactType": {
+              "schemaTitle": "system.Model",
+              "schemaVersion": "0.0.1"
+            }
+          }
+        }
+      }
+    },
+    "comp-train-op-2": {
+      "executorLabel": "exec-train-op-2",
+      "inputDefinitions": {
+        "artifacts": {
+          "data": {
+            "artifactType": {
+              "schemaTitle": "system.Dataset",
+              "schemaVersion": "0.0.1"
+            }
+          }
+        },
+        "parameters": {
+          "facility_id": {
+            "parameterType": "STRING"
+          },
+          "project": {
+            "parameterType": "STRING"
+          },
+          "root": {
+            "parameterType": "STRING"
+          },
+          "run_id": {
+            "parameterType": "STRING"
+          }
+        }
+      },
+      "outputDefinitions": {
+        "artifacts": {
+          "metrics": {
+            "artifactType": {
+              "schemaTitle": "system.Metrics",
+              "schemaVersion": "0.0.1"
+            }
+          },
+          "model": {
+            "artifactType": {
+              "schemaTitle": "system.Model",
+              "schemaVersion": "0.0.1"
+            }
+          }
+        }
+      }
+    },
+    "comp-train-op-3": {
+      "executorLabel": "exec-train-op-3",
+      "inputDefinitions": {
+        "artifacts": {
+          "data": {
+            "artifactType": {
+              "schemaTitle": "system.Dataset",
+              "schemaVersion": "0.0.1"
+            }
+          }
+        },
+        "parameters": {
+          "facility_id": {
+            "parameterType": "STRING"
+          },
+          "project": {
+            "parameterType": "STRING"
+          },
+          "root": {
+            "parameterType": "STRING"
+          },
+          "run_id": {
+            "parameterType": "STRING"
+          }
+        }
+      },
+      "outputDefinitions": {
+        "artifacts": {
+          "metrics": {
+            "artifactType": {
+              "schemaTitle": "system.Metrics",
+              "schemaVersion": "0.0.1"
+            }
+          },
+          "model": {
+            "artifactType": {
+              "schemaTitle": "system.Model",
+              "schemaVersion": "0.0.1"
+            }
+          }
+        }
+      }
+    }
+  },
+  "deploymentSpec": {
+    "executors": {
+      "exec-compare-op": {
+        "container": {
+          "args": [
+            "--executor_input",
+            "{{$}}",
+            "--function_to_execute",
+            "compare_op"
+          ],
+          "command": [
+            "sh",
+            "-c",
+            "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location 'kfp==2.18.0' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"$0\" \"$@\"\n",
+            "sh",
+            "-ec",
+            "program_path=$(mktemp -d)\n\nprintf \"%s\" \"$0\" > \"$program_path/ephemeral_component.py\"\n_KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         \"$program_path/ephemeral_component.py\"                         \"$@\"\n",
+            "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import *\n\ndef compare_op(project: str, root: str, run_id: str, facility_ids: list, allow_bqml: bool, publish: bool, summary: dsl.Output[dsl.Metrics]):\n    import json\n\n    from care.learn import steps\n\n    for r in steps.compare(project, root, run_id, facility_ids, allow_bqml=allow_bqml, publish=publish):\n        f = r[\"facility_id\"]\n        for k, v in r.get(\"holdout\", {}).items():\n            summary.log_metric(f\"{f}_eval_{k}_logloss\", v[\"logloss\"])\n        for k, c in r.get(\"bqml\", {}).items():\n            summary.log_metric(f\"{f}_eval_{k}_logloss\", c[\"holdout\"][\"logloss\"])\n            summary.log_metric(f\"{f}_eval_{k}_auc\", c[\"holdout\"][\"auc\"])\n        summary.metadata[f\"{f}_decision\"] = json.dumps(r.get(\"decision\"))\n\n"
+          ],
+          "image": "asia-northeast1-docker.pkg.dev/gdgoc-514203/cloud-run-source-deploy/care-trainer:v3"
+        }
+      },
+      "exec-detect-op": {
+        "container": {
+          "args": [
+            "--executor_input",
+            "{{$}}",
+            "--function_to_execute",
+            "detect_op"
+          ],
+          "command": [
+            "sh",
+            "-c",
+            "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location 'kfp==2.18.0' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"$0\" \"$@\"\n",
+            "sh",
+            "-ec",
+            "program_path=$(mktemp -d)\n\nprintf \"%s\" \"$0\" > \"$program_path/ephemeral_component.py\"\n_KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         \"$program_path/ephemeral_component.py\"                         \"$@\"\n",
+            "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import *\n\ndef detect_op(project: str, root: str, facility_ids: list, live_sources: str, cap_per_staff: int, cap_per_ip: int, publish: bool,\n              summary: dsl.Output[dsl.Metrics]):\n    from care.learn import steps\n\n    for r in steps.detect(project, root, facility_ids, live_sources, cap_per_staff, cap_per_ip, publish=publish):\n        summary.log_metric(f\"candidates_{r['facility_id']}\", float(r[\"candidates\"]))\n\n"
+          ],
+          "image": "asia-northeast1-docker.pkg.dev/gdgoc-514203/cloud-run-source-deploy/care-trainer:v3"
+        }
+      },
+      "exec-extract-op": {
+        "container": {
+          "args": [
+            "--executor_input",
+            "{{$}}",
+            "--function_to_execute",
+            "extract_op"
+          ],
+          "command": [
+            "sh",
+            "-c",
+            "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location 'kfp==2.18.0' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"$0\" \"$@\"\n",
+            "sh",
+            "-ec",
+            "program_path=$(mktemp -d)\n\nprintf \"%s\" \"$0\" > \"$program_path/ephemeral_component.py\"\n_KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         \"$program_path/ephemeral_component.py\"                         \"$@\"\n",
+            "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import *\n\ndef extract_op(project: str, root: str, run_id: str, live_sources: str, cap_per_staff: int, cap_per_ip: int, out: dsl.Output[dsl.Dataset]):\n    from care.learn import steps\n\n    r = steps.extract(project, root, run_id, live_sources, cap_per_staff, cap_per_ip)\n    out.uri = r[\"uri\"]\n    out.metadata.update({\"synthetic_rows\": r[\"synthetic\"], \"live_rows\": r[\"live\"], \"live_sources\": live_sources})\n\n"
+          ],
+          "image": "asia-northeast1-docker.pkg.dev/gdgoc-514203/cloud-run-source-deploy/care-trainer:v3"
+        }
+      },
+      "exec-promote-op": {
+        "container": {
+          "args": [
+            "--executor_input",
+            "{{$}}",
+            "--function_to_execute",
+            "promote_op"
+          ],
+          "command": [
+            "sh",
+            "-c",
+            "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location 'kfp==2.18.0' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"$0\" \"$@\"\n",
+            "sh",
+            "-ec",
+            "program_path=$(mktemp -d)\n\nprintf \"%s\" \"$0\" > \"$program_path/ephemeral_component.py\"\n_KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         \"$program_path/ephemeral_component.py\"                         \"$@\"\n",
+            "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import *\n\ndef promote_op(project: str, root: str, run_id: str, facility_ids: list, experiment: str, publish: bool, summary: dsl.Output[dsl.Metrics]):\n    from care.learn import steps\n\n    res = steps.promote(project, root, run_id, facility_ids, experiment=experiment or None, publish=publish)\n    for r in res:\n        summary.log_metric(f\"promoted_{r['facility_id']}\", 1.0 if r[\"promoted\"] else 0.0)\n        summary.metadata[f\"{r['facility_id']}_champion\"] = f\"{r['kind']} ({r['source']})\"\n        summary.metadata[f\"{r['facility_id']}_challenger\"] = r[\"challenger\"] or \"none\"\n\n"
+          ],
+          "image": "asia-northeast1-docker.pkg.dev/gdgoc-514203/cloud-run-source-deploy/care-trainer:v3"
+        }
+      },
+      "exec-train-op": {
+        "container": {
+          "args": [
+            "--executor_input",
+            "{{$}}",
+            "--function_to_execute",
+            "train_op"
+          ],
+          "command": [
+            "sh",
+            "-c",
+            "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location 'kfp==2.18.0' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"$0\" \"$@\"\n",
+            "sh",
+            "-ec",
+            "program_path=$(mktemp -d)\n\nprintf \"%s\" \"$0\" > \"$program_path/ephemeral_component.py\"\n_KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         \"$program_path/ephemeral_component.py\"                         \"$@\"\n",
+            "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import *\n\ndef train_op(project: str, root: str, run_id: str, facility_id: str, data: dsl.Input[dsl.Dataset], model: dsl.Output[dsl.Model],\n             metrics: dsl.Output[dsl.Metrics]):\n    from care.learn import steps\n\n    r = steps.train(project, root, run_id, facility_id)\n    model.uri = r[\"uri\"]\n    model.metadata.update({\"kind\": r[\"kind\"], \"gate_passed\": r[\"gate\"][\"passed\"], \"rows\": r[\"rows\"]})\n    m = r[\"metrics\"]\n    chosen = m.get(r[\"kind\"], {}) if r[\"kind\"] != \"baseline\" else {}\n    for k in (\"auc\", \"logloss\", \"brier\"):\n        if k in chosen:\n            metrics.log_metric(k, chosen[k])\n    if \"baseline\" in m:\n        metrics.log_metric(\"baseline_logloss\", m[\"baseline\"][\"logloss\"])\n        metrics.log_metric(\"logloss_gain_vs_baseline\", m[\"logloss_gain_vs_baseline\"])\n    metrics.log_metric(\"gate_passed\", 1.0 if r[\"gate\"][\"passed\"] else 0.0)\n\n"
+          ],
+          "image": "asia-northeast1-docker.pkg.dev/gdgoc-514203/cloud-run-source-deploy/care-trainer:v3",
+          "resources": {
+            "cpuLimit": 2.0,
+            "memoryLimit": 4.0,
+            "resourceCpuLimit": "2",
+            "resourceMemoryLimit": "4G"
+          }
+        }
+      },
+      "exec-train-op-2": {
+        "container": {
+          "args": [
+            "--executor_input",
+            "{{$}}",
+            "--function_to_execute",
+            "train_op"
+          ],
+          "command": [
+            "sh",
+            "-c",
+            "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location 'kfp==2.18.0' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"$0\" \"$@\"\n",
+            "sh",
+            "-ec",
+            "program_path=$(mktemp -d)\n\nprintf \"%s\" \"$0\" > \"$program_path/ephemeral_component.py\"\n_KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         \"$program_path/ephemeral_component.py\"                         \"$@\"\n",
+            "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import *\n\ndef train_op(project: str, root: str, run_id: str, facility_id: str, data: dsl.Input[dsl.Dataset], model: dsl.Output[dsl.Model],\n             metrics: dsl.Output[dsl.Metrics]):\n    from care.learn import steps\n\n    r = steps.train(project, root, run_id, facility_id)\n    model.uri = r[\"uri\"]\n    model.metadata.update({\"kind\": r[\"kind\"], \"gate_passed\": r[\"gate\"][\"passed\"], \"rows\": r[\"rows\"]})\n    m = r[\"metrics\"]\n    chosen = m.get(r[\"kind\"], {}) if r[\"kind\"] != \"baseline\" else {}\n    for k in (\"auc\", \"logloss\", \"brier\"):\n        if k in chosen:\n            metrics.log_metric(k, chosen[k])\n    if \"baseline\" in m:\n        metrics.log_metric(\"baseline_logloss\", m[\"baseline\"][\"logloss\"])\n        metrics.log_metric(\"logloss_gain_vs_baseline\", m[\"logloss_gain_vs_baseline\"])\n    metrics.log_metric(\"gate_passed\", 1.0 if r[\"gate\"][\"passed\"] else 0.0)\n\n"
+          ],
+          "image": "asia-northeast1-docker.pkg.dev/gdgoc-514203/cloud-run-source-deploy/care-trainer:v3",
+          "resources": {
+            "cpuLimit": 2.0,
+            "memoryLimit": 4.0,
+            "resourceCpuLimit": "2",
+            "resourceMemoryLimit": "4G"
+          }
+        }
+      },
+      "exec-train-op-3": {
+        "container": {
+          "args": [
+            "--executor_input",
+            "{{$}}",
+            "--function_to_execute",
+            "train_op"
+          ],
+          "command": [
+            "sh",
+            "-c",
+            "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location 'kfp==2.18.0' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"$0\" \"$@\"\n",
+            "sh",
+            "-ec",
+            "program_path=$(mktemp -d)\n\nprintf \"%s\" \"$0\" > \"$program_path/ephemeral_component.py\"\n_KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         \"$program_path/ephemeral_component.py\"                         \"$@\"\n",
+            "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import *\n\ndef train_op(project: str, root: str, run_id: str, facility_id: str, data: dsl.Input[dsl.Dataset], model: dsl.Output[dsl.Model],\n             metrics: dsl.Output[dsl.Metrics]):\n    from care.learn import steps\n\n    r = steps.train(project, root, run_id, facility_id)\n    model.uri = r[\"uri\"]\n    model.metadata.update({\"kind\": r[\"kind\"], \"gate_passed\": r[\"gate\"][\"passed\"], \"rows\": r[\"rows\"]})\n    m = r[\"metrics\"]\n    chosen = m.get(r[\"kind\"], {}) if r[\"kind\"] != \"baseline\" else {}\n    for k in (\"auc\", \"logloss\", \"brier\"):\n        if k in chosen:\n            metrics.log_metric(k, chosen[k])\n    if \"baseline\" in m:\n        metrics.log_metric(\"baseline_logloss\", m[\"baseline\"][\"logloss\"])\n        metrics.log_metric(\"logloss_gain_vs_baseline\", m[\"logloss_gain_vs_baseline\"])\n    metrics.log_metric(\"gate_passed\", 1.0 if r[\"gate\"][\"passed\"] else 0.0)\n\n"
+          ],
+          "image": "asia-northeast1-docker.pkg.dev/gdgoc-514203/cloud-run-source-deploy/care-trainer:v3",
+          "resources": {
+            "cpuLimit": 2.0,
+            "memoryLimit": 4.0,
+            "resourceCpuLimit": "2",
+            "resourceMemoryLimit": "4G"
+          }
+        }
+      }
+    }
+  },
+  "pipelineInfo": {
+    "description": "\u65bd\u8a2d\u3054\u3068\u306e\u5fdc\u8afe\u4e88\u6e2c\u306e\u5b66\u7fd2\u30fb\u6607\u683c\u3068\u3001\u624b\u4fee\u6b63\u306e\u304f\u308a\u8fd4\u3057\u306e\u691c\u51fa",
+    "name": "care-learn"
+  },
+  "root": {
+    "dag": {
+      "tasks": {
+        "compare-op": {
+          "cachingOptions": {
+            "enableCache": true
+          },
+          "componentRef": {
+            "name": "comp-compare-op"
+          },
+          "dependentTasks": [
+            "train-op",
+            "train-op-2",
+            "train-op-3"
+          ],
+          "inputs": {
+            "parameters": {
+              "allow_bqml": {
+                "componentInputParameter": "allow_bqml"
+              },
+              "facility_ids": {
+                "runtimeValue": {
+                  "constant": [
+                    "fac-sakura",
+                    "fac-midori",
+                    "fac-hidamari"
+                  ]
+                }
+              },
+              "project": {
+                "componentInputParameter": "project"
+              },
+              "publish": {
+                "componentInputParameter": "publish"
+              },
+              "root": {
+                "componentInputParameter": "root"
+              },
+              "run_id": {
+                "runtimeValue": {
+                  "constant": "{{$.pipeline_job_uuid}}"
+                }
+              }
+            }
+          },
+          "taskInfo": {
+            "name": "compare: BigQuery ML\uff08LOGISTIC_REG / BOOSTED_TREE\uff09\u3068\u540c\u3058\u8a55\u4fa1\u30c7\u30fc\u30bf\u3067\u6bd4\u8f03"
+          }
+        },
+        "detect-op": {
+          "cachingOptions": {
+            "enableCache": true
+          },
+          "componentRef": {
+            "name": "comp-detect-op"
+          },
+          "inputs": {
+            "parameters": {
+              "cap_per_ip": {
+                "componentInputParameter": "cap_per_ip"
+              },
+              "cap_per_staff": {
+                "componentInputParameter": "cap_per_staff"
+              },
+              "facility_ids": {
+                "runtimeValue": {
+                  "constant": [
+                    "fac-sakura",
+                    "fac-midori",
+                    "fac-hidamari"
+                  ]
+                }
+              },
+              "live_sources": {
+                "componentInputParameter": "live_sources"
+              },
+              "project": {
+                "componentInputParameter": "project"
+              },
+              "publish": {
+                "componentInputParameter": "publish"
+              },
+              "root": {
+                "componentInputParameter": "root"
+              }
+            }
+          },
+          "taskInfo": {
+            "name": "detect: \u624b\u4fee\u6b63\u306e\u304f\u308a\u8fd4\u3057 \u2192 \u30eb\u30fc\u30eb\u5019\u88dc"
+          }
+        },
+        "extract-op": {
+          "cachingOptions": {
+            "enableCache": true
+          },
+          "componentRef": {
+            "name": "comp-extract-op"
+          },
+          "inputs": {
+            "parameters": {
+              "cap_per_ip": {
+                "componentInputParameter": "cap_per_ip"
+              },
+              "cap_per_staff": {
+                "componentInputParameter": "cap_per_staff"
+              },
+              "live_sources": {
+                "componentInputParameter": "live_sources"
+              },
+              "project": {
+                "componentInputParameter": "project"
+              },
+              "root": {
+                "componentInputParameter": "root"
+              },
+              "run_id": {
+                "runtimeValue": {
+                  "constant": "{{$.pipeline_job_uuid}}"
+                }
+              }
+            }
+          },
+          "taskInfo": {
+            "name": "extract: BigQuery \u2192 \u5b66\u7fd2\u30c7\u30fc\u30bf"
+          }
+        },
+        "promote-op": {
+          "cachingOptions": {
+            "enableCache": true
+          },
+          "componentRef": {
+            "name": "comp-promote-op"
+          },
+          "dependentTasks": [
+            "compare-op"
+          ],
+          "inputs": {
+            "parameters": {
+              "experiment": {
+                "componentInputParameter": "experiment"
+              },
+              "facility_ids": {
+                "runtimeValue": {
+                  "constant": [
+                    "fac-sakura",
+                    "fac-midori",
+                    "fac-hidamari"
+                  ]
+                }
+              },
+              "project": {
+                "componentInputParameter": "project"
+              },
+              "publish": {
+                "componentInputParameter": "publish"
+              },
+              "root": {
+                "componentInputParameter": "root"
+              },
+              "run_id": {
+                "runtimeValue": {
+                  "constant": "{{$.pipeline_job_uuid}}"
+                }
+              }
+            }
+          },
+          "taskInfo": {
+            "name": "promote: champion / challenger \u2192 Registry \u2192 Experiments \u2192 BigQuery"
+          }
+        },
+        "train-op": {
+          "cachingOptions": {
+            "enableCache": true
+          },
+          "componentRef": {
+            "name": "comp-train-op"
+          },
+          "dependentTasks": [
+            "extract-op"
+          ],
+          "inputs": {
+            "artifacts": {
+              "data": {
+                "taskOutputArtifact": {
+                  "outputArtifactKey": "out",
+                  "producerTask": "extract-op"
+                }
+              }
+            },
+            "parameters": {
+              "facility_id": {
+                "runtimeValue": {
+                  "constant": "fac-sakura"
+                }
+              },
+              "project": {
+                "componentInputParameter": "project"
+              },
+              "root": {
+                "componentInputParameter": "root"
+              },
+              "run_id": {
+                "runtimeValue": {
+                  "constant": "{{$.pipeline_job_uuid}}"
+                }
+              }
+            }
+          },
+          "taskInfo": {
+            "name": "train: fac-sakura"
+          }
+        },
+        "train-op-2": {
+          "cachingOptions": {
+            "enableCache": true
+          },
+          "componentRef": {
+            "name": "comp-train-op-2"
+          },
+          "dependentTasks": [
+            "extract-op"
+          ],
+          "inputs": {
+            "artifacts": {
+              "data": {
+                "taskOutputArtifact": {
+                  "outputArtifactKey": "out",
+                  "producerTask": "extract-op"
+                }
+              }
+            },
+            "parameters": {
+              "facility_id": {
+                "runtimeValue": {
+                  "constant": "fac-midori"
+                }
+              },
+              "project": {
+                "componentInputParameter": "project"
+              },
+              "root": {
+                "componentInputParameter": "root"
+              },
+              "run_id": {
+                "runtimeValue": {
+                  "constant": "{{$.pipeline_job_uuid}}"
+                }
+              }
+            }
+          },
+          "taskInfo": {
+            "name": "train: fac-midori"
+          }
+        },
+        "train-op-3": {
+          "cachingOptions": {
+            "enableCache": true
+          },
+          "componentRef": {
+            "name": "comp-train-op-3"
+          },
+          "dependentTasks": [
+            "extract-op"
+          ],
+          "inputs": {
+            "artifacts": {
+              "data": {
+                "taskOutputArtifact": {
+                  "outputArtifactKey": "out",
+                  "producerTask": "extract-op"
+                }
+              }
+            },
+            "parameters": {
+              "facility_id": {
+                "runtimeValue": {
+                  "constant": "fac-hidamari"
+                }
+              },
+              "project": {
+                "componentInputParameter": "project"
+              },
+              "root": {
+                "componentInputParameter": "root"
+              },
+              "run_id": {
+                "runtimeValue": {
+                  "constant": "{{$.pipeline_job_uuid}}"
+                }
+              }
+            }
+          },
+          "taskInfo": {
+            "name": "train: fac-hidamari"
+          }
+        }
+      }
+    },
+    "inputDefinitions": {
+      "parameters": {
+        "allow_bqml": {
+          "defaultValue": true,
+          "isOptional": true,
+          "parameterType": "BOOLEAN"
+        },
+        "cap_per_ip": {
+          "defaultValue": 50.0,
+          "isOptional": true,
+          "parameterType": "NUMBER_INTEGER"
+        },
+        "cap_per_staff": {
+          "defaultValue": 20.0,
+          "isOptional": true,
+          "parameterType": "NUMBER_INTEGER"
+        },
+        "experiment": {
+          "defaultValue": "care-acceptance",
+          "isOptional": true,
+          "parameterType": "STRING"
+        },
+        "live_sources": {
+          "defaultValue": "",
+          "isOptional": true,
+          "parameterType": "STRING"
+        },
+        "project": {
+          "defaultValue": "gdgoc-514203",
+          "isOptional": true,
+          "parameterType": "STRING"
+        },
+        "publish": {
+          "defaultValue": true,
+          "isOptional": true,
+          "parameterType": "BOOLEAN"
+        },
+        "root": {
+          "defaultValue": "gs://gdgoc-514203-vertex-pipelines",
+          "isOptional": true,
+          "parameterType": "STRING"
+        }
+      }
+    }
+  },
+  "schemaVersion": "2.1.0",
+  "sdkVersion": "kfp-2.18.0"
+}

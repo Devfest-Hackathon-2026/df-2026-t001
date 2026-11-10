@@ -70,7 +70,7 @@ export function App() {
       case 'vac': return <Vacancies s={s} vacId={nav.vacId} go={go} openStaff={setStaff} />;
       case 'req': return <Requests s={s} openStaff={setStaff} />;
       case 'auto': return <AutoSettings s={s} />;
-      case 'people': return <People s={s} openStaff={setStaff} openResident={setRes} />;
+      case 'people': return <People s={s} />;
       case 'labor': return <Labor s={s} openStaff={setStaff} onPrint={setPrint} />;
       case 'collect': return <Collect s={s} openStaff={setStaff} />;
       case 'health': return <Health s={s} openStaff={setStaff} />;

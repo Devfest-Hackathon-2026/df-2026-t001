@@ -224,3 +224,18 @@ input.sw:checked { background: var(--pri); } input.sw:checked::after { transform
 .chatdock-tabs button[aria-selected="true"] { background: var(--pri-bg); color: var(--pri-tx); border-color: transparent; font-weight: 500; }
 .chatdock-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; overflow-y: auto; }
 .side-nav .nv.settings { margin-top: auto; }
+
+/* 1日表示：不足の時間帯を強調（赤＝スキル不足、橙＝人数不足） */
+.short-sum { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 12px; margin-bottom: 8px; border-radius: 12px; font-size: 13px; border: 1px solid var(--line); background: #fff; }
+.short-sum.bad { background: var(--bad-bg); border-color: #f2b8b5; } .short-sum.warn { background: var(--warn-bg); border-color: #f3d38f; } .short-sum.ok { color: var(--ok); }
+.short-sum.bad > .ms { color: var(--bad); } .short-sum.warn > .ms { color: #b06000; } .short-sum b { font-weight: 500; }
+.short-jumps { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+.short-jumps .sj-bad { border-color: var(--bad); color: var(--bad); background: #fff; } .short-jumps .sj-warn { border-color: #e8a33a; color: #8a4b00; background: #fff; }
+.vshort { position: absolute; top: 36px; bottom: 0; z-index: 2; pointer-events: none; }
+.vshort.bad { background: rgba(217, 48, 37, .09); box-shadow: inset 2px 0 0 rgba(217, 48, 37, .55), inset -2px 0 0 rgba(217, 48, 37, .55); }
+.vshort.warn { background: rgba(249, 171, 0, .10); box-shadow: inset 2px 0 0 rgba(232, 163, 58, .6), inset -2px 0 0 rgba(232, 163, 58, .6); }
+.hd-short { position: absolute; bottom: 0; height: 4px; } .hd-short.bad { background: var(--bad); } .hd-short.warn { background: #e8a33a; }
+.g-row.short-row { background: #fffafa; } .g-row.short-row .g-name { gap: 2px; }
+.sbar { position: absolute; height: 20px; border-radius: 4px; font-size: 11px; line-height: 20px; padding: 0 6px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; border: 0; font-weight: 500; z-index: 3; }
+.sbar.bad { background: var(--bad); color: #fff; } .sbar.warn { background: #f9c66b; color: #5c3a00; }
+.sbar { z-index: 1; } .vshort { z-index: 1; } .g-row.short-row .g-name { z-index: 3; background: #fffafa; }

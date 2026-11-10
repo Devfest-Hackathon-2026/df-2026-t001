@@ -6,6 +6,8 @@
 * 特徴量は Svc.offer_features（fact_offers の列）と同じ定義。画面の職員は合成施設の職員と別人なので、
   人ごとの過去の応諾率（staff_prior）は施設全体の応諾率になる（ID を "app:" で区切り、学習データの人と混ざらないようにする）。
 * モデルは RANK_PRIOR_FACILITY（既定 fac-sakura）の champion を事前分布として使う。読めなければ model="none" を返す（エラーにしない）。
+* A/B（AB_CHALLENGER_SHARE > 0）のとき、vacancy_id を送ると、そのハッシュで champion / challenger を決め、応答の "ab" に腕を返す
+  （画面は打診のイベントにそのまま載せられる）。vacancy_id が無い・A/B が無効なら従来どおり champion。
 * 打診してよいかの最終判断（連勤・夜勤明け・週の上限など）は画面側が持つ。ここでの除外は、明らかに入れない人だけ。
 * ただし画面がその月の勤務（cells）を送ったときは、候補ごとに「引き受けたらソルバーの絶対ルールを破るか」を
   inline_verify で確かめ、破る人を excluded に移す（reason はルールの名前、rule_id つき）。cells が無ければ従来どおり。
@@ -20,7 +22,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field, model_validator
 
 from .inline_verify import check_cells, exclude_hard
-from .learn import scoring
+from .learn import ab, scoring
 from .learn.store import ModelStore
 from .solver.monthly import WORK_H
 
@@ -79,6 +81,7 @@ class RankIn(BaseModel):
     first_weekday: int | None = Field(None, ge=0, le=6)
     carry_in: dict[str, str] = Field(default_factory=dict, max_length=200)
     night_max: int | None = Field(None, ge=1, le=15)
+    vacancy_id: str | None = Field(None, pattern=_ID, description="任意。A/B の腕を決めるのに使う（記録はしない）")
 
     @model_validator(mode="after")
     def _cells(self):
@@ -197,15 +200,19 @@ def register(app, svc_ref: Callable[[], object | None]) -> None:
     @router.post("/api/v1/rank-candidates")
     def rank_candidates(body: RankIn):
         """欠員の候補を、学習済みの応諾予測で並べる（状態なし・名前なし）。モデルが無ければ model="none"。"""
-        art = None
+        art, info = None, None
         try:
             ms = _models(svc_ref)
-            art = ms.champion(os.getenv("RANK_PRIOR_FACILITY", "fac-sakura")) if ms else None
+            if ms:
+                art, info = ab.choose(ms, os.getenv("RANK_PRIOR_FACILITY", "fac-sakura"), body.vacancy_id)
         except Exception as e:  # noqa: BLE001  モデルが読めなくても止めない
             print(f"[inline-rank] model load failed: {type(e).__name__}")
         from .guard import heavy_slot  # 候補ごとに検証を回すので、求解と同じ同時実行の枠で動かす（分あたりの枠はミドルウェアで消費済み）
 
         with heavy_slot():
-            return rank(body, art)
+            out = rank(body, art)
+        if info:                                # A/B が有効なときだけ（無効なら応答は従来どおり）
+            out["ab"] = info
+        return out
 
     app.include_router(router)
