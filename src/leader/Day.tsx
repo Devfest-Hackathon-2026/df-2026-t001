@@ -52,6 +52,16 @@ export function Day({ s, date, go, openStaff, openResident }: { s: State; date: 
   const dayEvents = eventsOn(s.events, date);
   const trackStyle = `width:${W}px;--hw:${(60 / step) * colW}px;--h0:${px(Math.ceil(A / 60) * 60)}px`;
   const breakers = rows.filter((r) => r.blocks.some((b) => b.kind === 'break' || b.kind === 'nap'));
+  // 不足の時間帯（スキル不足・人数不足）。表示中の範囲（フロア・ユニット）に関係するものだけ、レーンに並べる
+  const issueFloor = (sc: string) => (/^\d階$/.test(sc) ? +sc[0] : floorOf(UNITS.find((u) => u.name === sc)?.id ?? ''));
+  const scRaw = issues.filter((i) => i.t1 > A && i.t0 < B && (scope === 'all' || (scope[0] === 'F' ? issueFloor(i.scope) === +scope.slice(1) : i.scope === unitName(scope) || i.scope === `${floorOf(scope)}階`)));
+  // 同じ時間帯・同じ種類の不足（例：4ユニットとも 07:45〜08:45 に1名不足）は1本にまとめる
+  type Iss = (typeof issues)[number] & { scopes: string[] };
+  const scIssues: Iss[] = []; for (const i of scRaw) { const g = scIssues.find((x) => x.kind === i.kind && x.t0 === i.t0 && x.t1 === i.t1 && x.need === i.need && x.have === i.have); if (g) g.scopes.push(i.scope); else scIssues.push({ ...i, scopes: [i.scope] }); }
+  const lanes: number[] = []; const placed = scIssues.map((i) => { let k = lanes.findIndex((end) => end <= i.t0); if (k < 0) { k = lanes.length; lanes.push(0); } lanes[k] = i.t1; return { i, lane: k }; });
+  const nSkill = scRaw.filter((i) => i.kind === 'skill').length; const nHead = scRaw.length - nSkill;
+  const jump = (t: number) => { const el = gridRef.current; if (el) el.scrollTo({ left: Math.max(0, px(t) - 60), behavior: 'smooth' }); };
+  const shortLabel = (i: Iss) => (i.kind === 'skill' ? `${i.scopes.join('・')} 医療的ケア` : `${i.scopes.join('・')} ${i.have}/${i.need}名`);
   return (
     <div class="day">
       <div class="row wrap tb" style="justify-content:space-between">
@@ -72,10 +82,24 @@ export function Day({ s, date, go, openStaff, openResident }: { s: State; date: 
         {holidayOf(date) && <span class="chip bad">{holidayOf(date)}</span>}
         {dayEvents.map((e) => <span key={e.id} class="evc big" style={`background:${EVENT_STYLE[e.kind].bg};color:${EVENT_STYLE[e.kind].fg}`}>{e.title}{effectText(e) ? `（${effectText(e)}）` : ''}</span>)}
       </div>}
+      <div class={`short-sum ${scIssues.length ? (nSkill ? 'bad' : 'warn') : 'ok'}`} role="status">
+        <Icon n={scIssues.length ? 'warning' : 'check_circle'} sm />
+        {scIssues.length ? <><b>この日の不足 {scRaw.length}件</b>{nSkill > 0 && <span class="chip bad">スキル不足 {nSkill}</span>}{nHead > 0 && <span class="chip warn">人数不足 {nHead}</span>}
+          <span class="small">表の赤・橙の帯が不足している時間帯です。押すとその時刻へ移動します</span>
+          <span class="short-jumps">{scIssues.slice(0, 6).map((i, k) => <button key={k} class={`btn sm ${i.kind === 'skill' ? 'sj-bad' : 'sj-warn'}`} onClick={() => jump(i.t0)}>{issueTime(i)} {shortLabel(i)}</button>)}{scIssues.length > 6 && <span class="small">ほか{scIssues.length - 6}件（下の「配置の検証」）</span>}</span></>
+          : <span>この範囲では、人数・スキルの不足はありません</span>}
+      </div>
       <div class="grid-wrap scroll" ref={gridRef}>
-        <div style={`min-width:${NAMEW + W}px`}>
+        <div style={`min-width:${NAMEW + W}px;position:relative`}>
           <div class="g-head"><div class="g-name head" style={`width:${NAMEW}px`}>職員／担当</div>
-            <div class="track head" style={trackStyle}>{hours.map((t) => <span key={t} class="hl" style={`left:${px(t)}px`}>{t >= 1440 ? '翌' : ''}{fmtHM(t)}</span>)}</div></div>
+            <div class="track head" style={trackStyle}>{hours.map((t) => <span key={t} class="hl" style={`left:${px(t)}px`}>{t >= 1440 ? '翌' : ''}{fmtHM(t)}</span>)}
+              {scIssues.map((i, k) => <span key={k} class={`hd-short ${i.kind === 'skill' ? 'bad' : 'warn'}`} style={`left:${px(Math.max(i.t0, A))}px;width:${px(Math.min(i.t1, B)) - px(Math.max(i.t0, A))}px`} />)}</div></div>
+          {placed.length > 0 && <div class="g-row short-row" style={`height:${8 + lanes.length * 24}px`}>
+            <div class="g-name" style={`width:${NAMEW}px`}><span class="small" style="color:var(--bad);font-weight:500">不足の時間帯</span><span class="small">赤＝スキル　橙＝人数</span></div>
+            <div class="track" style={trackStyle}>{placed.map(({ i, lane }, k) => { const l = px(Math.max(i.t0, A)); const w = px(Math.min(i.t1, B)) - l;
+              return <button key={k} class={`sbar ${i.kind === 'skill' ? 'bad' : 'warn'}`} style={`left:${l}px;width:${Math.max(6, w - 2)}px;top:${4 + lane * 24}px`} title={`${i.kind === "skill" ? "スキル不足" : "人数不足"} ${issueTime(i)} ${i.scopes.join("・")}（必要${i.need}／現在${i.have}）`} onClick={() => jump(i.t0)}>{w > 70 ? `${i.kind === 'skill' ? 'スキル' : '人数'}：${shortLabel(i)}` : ''}</button>; })}</div>
+          </div>}
+          {scIssues.map((i, k) => { const l = px(Math.max(i.t0, A)); const w = px(Math.min(i.t1, B)) - l; return <span key={'v' + k} class={`vshort ${i.kind === 'skill' ? 'bad' : 'warn'}`} aria-hidden="true" style={`left:${NAMEW + l}px;width:${w}px`} />; })}
 
           <button class="g-grp acc" aria-expanded={!closed.head} onClick={() => toggle('head')}><span class="acc-in"><Icon n={closed.head ? 'chevron_right' : 'expand_more'} sm /> 対応人数（休憩・仮眠を除く。赤は不足）</span></button>
           {!closed.head && [...UNITS.filter((u) => scope === 'all' || (scope[0] === 'F' ? u.floor === +scope.slice(1) : u.id === scope)).map((u) => ({ id: u.id, name: `${u.name}（${u.floor}階）`, day: true as const, fn: (r: DayRow) => r.assignment.unitId === u.id })), ...[1, 2].filter((f) => scope === 'all' || (scope[0] === 'F' ? f === +scope.slice(1) : f === floorOf(scope))).map((f) => ({ id: `F${f}`, name: `${f}階 夜間`, day: false as const, fn: (r: DayRow) => floorOf(r.assignment.unitId) === f }))].map((u) => (

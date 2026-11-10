@@ -96,7 +96,7 @@ export function Plan({ s, onOpen, go, openStaff, openResident }: { s: State; onO
         <h3 class="h3" style="margin:20px 0 8px">できあがりの確認</h3>
         <div class="sumgrid">
           <div class={`scard ${plan.stats.dayOffHonored === plan.stats.dayOffTotal ? 'ok' : 'warn'}`}><div class="v">{plan.stats.dayOffHonored}/{plan.stats.dayOffTotal}</div><div class="small">希望休を反映</div></div>
-          <div class={`scard ${plan.stats.shortDays ? 'bad' : plan.stats.warnDays ? 'warn' : 'ok'}`}><div class="v">{plan.stats.shortDays}日</div><div class="small">人が足りない日{plan.stats.warnDays ? `（要確認 ${plan.stats.warnDays}日）` : ''}／欠員枠 {plan.stats.vacantSlots}</div></div>
+          <button class={`scard sbtn ${plan.stats.shortDays ? 'bad' : plan.stats.warnDays ? 'warn' : 'ok'}`} onClick={() => document.getElementById('plan-short')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><div class="v">{plan.stats.shortDays + plan.stats.warnDays}日</div><div class="small">不足のある日（担当なし {plan.stats.shortDays}日・時間帯の人数／スキル不足 {plan.stats.warnDays}日）／欠員枠 {plan.stats.vacantSlots}</div></button>
           <div class="scard"><div class="v">{plan.stats.extraSlots}枠</div><div class="small">行事のための追加配置</div></div>
           <div class="scard"><div class="v">{Object.values(plan.spares).reduce((t, l) => t + l.length, 0)}日分</div><div class="small">補欠（のべ）</div></div>
           <div class={`scard ${warnList.length ? 'warn' : 'ok'}`}><div class="v">{warnList.length}件</div><div class="small">労務の警告</div></div>
@@ -253,7 +253,7 @@ function ShortList({ s, plan, days, sums, onDay }: { s: State; plan: NonNullable
     <section class="card" id="plan-short">
       <div class="row spread wrap"><h3 class="h3">不足（時間・スキル）<span class="chip bad" style="margin-left:8px">{rows.length}件</span></h3><span class="small">行をタップすると、その日の1日表示（候補と依頼もそこから）</span></div>
       <div class="stack" style="gap:6px;margin-top:8px">{shown.map((r, i) => <button key={i} class="vitem" onClick={() => onDay(r.date)}>
-        <div class="row spread"><b style="font-weight:500">{fmtMD(r.date)}（{DOW_JA[dow(r.date)]}）</b><span class={`chip ${r.kind === 'skill' ? 'bad' : r.kind === 'slot' ? 'bad' : 'warn'}`}>{r.kind === 'skill' ? 'スキル不足' : r.kind === 'slot' ? '担当なし' : '人数不足'}</span></div>
+        <div class="row spread"><b style="font-weight:500">{fmtMD(r.date)}</b><span class={`chip ${r.kind === 'skill' ? 'bad' : r.kind === 'slot' ? 'bad' : 'warn'}`}>{r.kind === 'skill' ? 'スキル不足' : r.kind === 'slot' ? '担当なし' : '人数不足'}</span></div>
         <div class="small">{r.text}{r.sub ? `／${r.sub}` : ''}</div></button>)}</div>
       {rows.length > 8 && <button class="btn sm" style="margin-top:8px" onClick={() => setAll(!all)}>{all ? '閉じる' : `すべて見る（${rows.length}件）`}</button>}
     </section>
