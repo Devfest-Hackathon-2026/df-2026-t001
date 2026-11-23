@@ -285,7 +285,8 @@
 .pg-ck { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; padding: 2px 0; }
 
 /* 行の色：いちばん上のスキルの色で薄く */
-.pgrid tbody tr.rt > td.c, .pgrid tbody tr.rt > td.nm { background-color: var(--skbg); }
+/* 行の地は、スキルの色を白に大きく混ぜてごく薄く（勤務のマスの色が主役になるように） */
+.pgrid tbody tr.rt > td.c, .pgrid tbody tr.rt > td.nm { background-color: color-mix(in srgb, var(--skbg) 35%, #fff); }
 .pgrid tbody tr.rt > td.nm { box-shadow: inset 3px 0 0 var(--sk), inset -1px 0 0 var(--line); }
 .sk-legend { gap: 6px; flex-wrap: wrap; }
 .sk-sw { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 4px; background: var(--skbg); color: var(--sk); font-size: 11px; border-left: 3px solid var(--sk); }
