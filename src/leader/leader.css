@@ -375,3 +375,41 @@ input.sw:checked { background: var(--pri); } input.sw:checked::after { transform
 }
 @media (min-width: 1500px) { .dash-2col { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
 @media (max-width: 599px) { .dash-wx { margin-left: 0; } .wx-t .small { display: none; } }
+
+/* 今日の出勤：要対応と同じ高さにそろえ、体調の一覧は残りの高さで中だけスクロール */
+.dash-2col { align-items: stretch; }
+.dash-2col > .today-card { display: flex; flex-direction: column; min-height: 0; }
+.today-card .tc-sh { cursor: pointer; }
+.today-card .tc-sh.on { border-color: var(--pri); background: var(--pri-bg); box-shadow: inset 0 0 0 1px var(--pri); }
+.today-card .tc-time { font-size: 10px; color: var(--tx2); }
+.tc-people { margin-top: 8px; border: 1px solid var(--line2); border-radius: 10px; overflow: hidden; }
+.tc-p { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto auto auto; align-items: center; gap: 8px; padding: 6px 10px; border-top: 1px solid var(--line2); font-size: 14px; }
+.tc-p:first-child { border-top: 0; }
+.tc-p.absent { opacity: .55; }
+.tc-u { font-size: 12px; color: var(--tx2); } .tc-n { text-align: left; } .tc-pt { white-space: nowrap; }
+.hs { font-size: 11px; padding: 1px 8px; border-radius: 999px; white-space: nowrap; background: var(--bg3); color: var(--tx2); }
+.hs.bad { background: var(--bad-bg); color: var(--bad); } .hs.warn { background: var(--warn-bg); color: #8a5a00; } .hs.ok { background: var(--ok-bg); color: var(--ok); }
+.tc-evs { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.today-card .tc-health { flex: 1 1 0; min-height: 180px; display: flex; flex-direction: column; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line2); }
+.hl-list { flex: 1 1 0; min-height: 0; overflow: auto; margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.hl-row { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; text-align: left; font-size: 14px; }
+.hl-row:hover { background: var(--bg2); } .hl-row.bad { background: var(--bad-bg); }
+.hl-n { font-weight: 500; } .hl-u { color: var(--tx2); } .hl-d { font-size: 12px; color: var(--tx2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 899px) { .today-card .tc-health { flex: none; } .hl-list { max-height: 280px; flex: none; } }
+
+/* 今日のシフト（時間帯） */
+.tl-card { margin-top: 12px; }
+.tlx { --nmw: 112px; position: relative; margin-top: 8px; overflow-x: auto; }
+.tlx-head, .tlx-row { display: flex; align-items: center; min-width: 760px; }
+.tlx-head { height: 20px; position: sticky; top: 0; background: #fff; z-index: 1; }
+.tlx-nm { width: var(--nmw); flex-shrink: 0; font-size: 13px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 8px; }
+.tlx-axis, .tlx-track { position: relative; flex: 1; height: 100%; }
+.tlx-axis span { position: absolute; transform: translateX(-50%); font-size: 11px; color: var(--tx2); top: 2px; }
+.tlx-uh { font-size: 12px; font-weight: 500; color: var(--pri-tx); background: #eef2fb; padding: 2px 8px; margin-top: 6px; border-radius: 6px; min-width: 760px; }
+.tlx-row { height: 24px; }
+.tlx-track { height: 18px; background: repeating-linear-gradient(90deg, transparent 0, transparent calc(100% / 12.25 - 1px), var(--line2) calc(100% / 12.25 - 1px), var(--line2) calc(100% / 12.25)); }
+.tlx-bar { position: absolute; top: 0; bottom: 0; border-radius: 5px; font-size: 11px; line-height: 18px; padding: 0 6px; white-space: nowrap; overflow: hidden; }
+.tlx-bar.absent { border: 1px dashed var(--line); color: var(--tx3) !important; }
+.tlx-brk { position: absolute; top: 3px; bottom: 3px; background: repeating-linear-gradient(45deg, rgba(255,255,255,.9) 0 3px, rgba(255,255,255,.35) 3px 6px); border-radius: 3px; pointer-events: none; }
+.tlx-now { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--bad); pointer-events: none; z-index: 2; }
+.tlx-now span { position: absolute; top: -2px; left: 4px; font-size: 10px; color: var(--bad); background: #fff; padding: 0 2px; }

@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'preact/hooks';
-import { SHIFT_ORDER, SHIFTS, staffById, unitName, UNITS } from '../core/facility';
+import { DEFAULT_SHIFT_TYPES, SHIFT_ORDER, SHIFTS, shiftStyleOf, staffById, unitName, UNITS } from '../core/facility';
+import { buildDay } from '../core/roster';
+import { fmtHM } from '../core/dates';
 import { addDays, fmtMD } from '../core/dates';
 import { holidayOf } from '../core/events';
 import { EVENT_STYLE, effectText } from './Events';
@@ -10,7 +12,7 @@ import { Icon, useToast } from '../shared/ui';
 import type { Go } from './util';
 import { AskCard, PostSheet, ReqActions } from './Auto';
 import { AdjustApprovalCard } from './Delegate';
-import { stampTime } from '../core/dates';
+import { stampMin, stampTime } from '../core/dates';
 import { VAC_STATE } from './util';
 import { Outlook } from './ai/Outlook';
 import { Weather } from './Weather';
@@ -34,6 +36,35 @@ function ReqResult({ s, r, go }: { s: State; r: State['requests'][number]; go: G
   return <div class="req-st done row spread wrap"><span><Icon n="check_circle" sm /> {text}</span>{v && <button class="btn sm" onClick={() => go('vac', { vacId: v.id })}>欠員を開く</button>}</div>;
 }
 
+/** 今日のシフト（時間帯）：7:00〜翌9:30 の横軸に、ユニットごとの職員の勤務を帯で並べる */
+function TodayTimeline({ s, go, openStaff }: { s: State; go: Go; openStaff: (id: string) => void }) {
+  const A = 420, B = 1890; const pct = (m: number) => `${((Math.min(Math.max(m, A), B) - A) / (B - A)) * 100}%`;
+  const rows = useMemo(() => buildDay(s.assignments, s.today), [s.assignments, s.today]);
+  const now = stampMin(s.now);
+  const hours: number[] = []; for (let t = 480; t <= 1860; t += 120) hours.push(t);
+  return (
+    <section class="card tl-card">
+      <div class="row spread wrap" style="gap:8px"><h3 class="h3">今日のシフト</h3><button class="btn sm" onClick={() => go('day', { date: s.today })}>1日の画面で見る</button></div>
+      <div class="tlx">
+        <div class="tlx-head"><span class="tlx-nm" />{<span class="tlx-axis">{hours.map((t) => <span key={t} style={`left:${pct(t)}`}>{t >= 1440 ? '翌' : ''}{fmtHM(t % 1440)}</span>)}</span>}</div>
+        {UNITS.map((u) => { const rs = rows.filter((r) => r.assignment.unitId === u.id).sort((a, b) => (a.tail ? -1 : 0) - (b.tail ? -1 : 0) || SHIFT_ORDER.indexOf(a.assignment.shift) - SHIFT_ORDER.indexOf(b.assignment.shift)); return (
+          <div key={u.id} class="tlx-unit">
+            <div class="tlx-uh">{u.floor}階 {u.name}</div>
+            {rs.map((r) => { const a = r.assignment; const st = shiftStyleOf(a.shift, DEFAULT_SHIFT_TYPES); const t0 = r.tail ? SHIFTS[a.shift].start - 1440 : SHIFTS[a.shift].start; const t1 = r.tail ? SHIFTS[a.shift].end - 1440 : SHIFTS[a.shift].end; if (t1 <= A) return null; const absent = a.status === 'absent';
+              return <div key={a.id + (r.tail ? 't' : '')} class="tlx-row">
+                <button class="tlx-nm link" onClick={() => openStaff(r.staff.id)}>{r.staff.name}</button>
+                <span class="tlx-track">
+                  <span class={`tlx-bar${absent ? ' absent' : ''}`} style={`left:${pct(t0)};width:calc(${pct(t1)} - ${pct(t0)});background:${absent ? 'transparent' : st.bg};color:${st.fg}`} title={`${a.shift} ${fmtHM(t0 % 1440)}〜${fmtHM(t1 % 1440)}${absent ? '（休み）' : ''}`}>{r.tail ? '夜勤明け' : absent ? `${a.shift}（休み）` : a.shift}</span>
+                  {!absent && r.blocks.filter((b) => b.kind === 'break' || b.kind === 'nap').map((b, i) => { const o = r.tail ? -1440 : 0; return <span key={i} class="tlx-brk" style={`left:${pct(b.start + o)};width:calc(${pct(b.end + o)} - ${pct(b.start + o)})`} title={`${b.kind === 'nap' ? '仮眠' : '休憩'} ${fmtHM((b.start + o) % 1440)}〜`} />; })}
+                </span>
+              </div>; })}
+          </div>); })}
+        {now >= A && now <= B && <span class="tlx-now" style={`left:calc(var(--nmw) + (100% - var(--nmw)) * ${(now - A) / (B - A)})`}><span>いま</span></span>}
+      </div>
+    </section>
+  );
+}
+
 export function Dashboard({ s, go, openStaff }: { s: State; go: Go; openStaff: (id: string) => void }) {
   const today = s.today;
   const [post, setPost] = useState<string | null>(null);
@@ -54,6 +85,11 @@ export function Dashboard({ s, go, openStaff }: { s: State; go: Go; openStaff: (
   const flagged = s.health.filter((h) => h.date === today && (h.temp >= 37.5 || h.symptoms.length || h.household !== '症状なし' || h.consult));
   const unsub = Object.values(s.collection.submitted).filter((v) => !v).length;
   const night = todays.filter((a) => a.shift === '夜勤');
+  // 勤務人数を押すと、その勤務の人を出す
+  const [selSh, setSelSh] = useState<string | null>(null);
+  const isFlag = (h: State['health'][number]) => h.temp >= 37.5 || h.symptoms.length > 0 || h.household !== '症状なし' || h.consult;
+  const healthOf = (id: string) => { const h = s.health.find((x) => x.staffId === id && x.date === today); return !h ? { cls: 'warn', label: '体調 未入力' } : isFlag(h) ? { cls: 'bad', label: '体調 要確認' } : { cls: 'ok', label: '体調 OK' }; };
+  const healthRows = onDuty.map((a) => { const h = s.health.find((x) => x.staffId === a.staffId && x.date === today); return { a, h, lv: !h ? 'warn' : isFlag(h) ? 'bad' : 'ok' }; }).sort((x, y) => ['bad', 'warn', 'ok'].indexOf(x.lv) - ['bad', 'warn', 'ok'].indexOf(y.lv));
   const upcoming = s.events.filter((e) => e.date >= today && e.date <= addDays(today, 7)).sort((a, b) => a.date.localeCompare(b.date));
   const auto = s.requests.filter((r) => r.status === 'auto').slice(0, 4);
   // 要対応の件数＝欠員（埋まっていない）＋承認待ちの申請。左のバッジ・要対応のタブと同じ数え方
@@ -82,31 +118,34 @@ export function Dashboard({ s, go, openStaff }: { s: State; go: Go; openStaff: (
       </section>
       <section class="card today-card">
         <h3 class="h3">今日の出勤</h3>
-        <div class="today-grid">
-          <div>
-            <div class="tc-h">勤務人数</div>
-            <div class="tc-shifts">{SHIFT_ORDER.map((sh) => { const have = todays.filter((a) => a.shift === sh && a.status !== 'absent').length; return <button key={sh} class={`tc-sh${have < 4 ? ' short' : ''}`} onClick={() => go('day', { date: today })}><span class="small">{sh}</span><b>{have}</b></button>; })}</div>
-          </div>
-          <div>
-            <div class="tc-h">今夜の夜勤</div>
-            <div class="stack" style="gap:2px">{UNITS.map((u) => { const a = night.find((x) => x.unitId === u.id && x.status !== 'absent'); return <div key={u.id} class="row spread nrow"><span class="muted">{u.name}</span>{a ? <button class="link" onClick={() => openStaff(a.staffId)}>{staffById(a.staffId).name}</button> : <span class="chip bad">欠員</span>}</div>; })}</div>
-          </div>
-          <div>
-            <div class="tc-h">これからの行事（7日以内）</div>
-            {upcoming.length ? <div class="stack" style="gap:4px">{upcoming.slice(0, 4).map((e) => <button key={e.id} class="tc-ev" onClick={() => go('day', { date: e.date })}><span class="evc" style={`background:${EVENT_STYLE[e.kind].bg};color:${EVENT_STYLE[e.kind].fg}`}>{fmtMD(e.date).replace(/（.）/, '')}</span><span>{e.title}</span></button>)}</div> : <p class="small">7日以内の行事はありません</p>}
-          </div>
-          <div class="tc-health">
-            <div class="row spread wrap tc-hrow" style="gap:8px"><div class="tc-h" style="margin:0">体調</div><button class="linkbtn small" onClick={() => go('health')}>一覧</button></div>
-            {flagged.length ? <div class="stack" style="gap:6px;margin-top:8px">{flagged.map((h) => <button key={h.staffId} class="hc-row" onClick={() => go('health')}><span class="hc-name">{staffById(h.staffId).name}</span><span class="hc-why">{[h.temp >= 37.5 ? `${h.temp.toFixed(1)}℃` : '', ...h.symptoms, h.household !== '症状なし' ? `家族：${h.household}` : '', h.consult ? '相談したい' : ''].filter(Boolean).join('・')}</span><span class="chip bad">要確認</span></button>)}</div>
-              : <p class="muted" style="margin-top:8px">確認が必要な人はいません</p>}
-            {missing.length > 0 && <div class="row spread wrap hc-miss"><span>未入力 <b>{missing.length}名</b><span class="small">（今日の勤務 {onDuty.length}名中）</span></span><button class="btn sm" onClick={() => { const n = remindHealth(missing.map((a) => a.staffId)); setToast(`未入力の${n}名に催促しました`); }}>まとめて催促</button></div>}
-          </div>
+        <div class="tc-h">勤務人数（押すと出勤する人）</div>
+        <div class="tc-shifts" role="tablist">{SHIFT_ORDER.map((sh) => { const have = todays.filter((a) => a.shift === sh && a.status !== 'absent').length; return <button key={sh} role="tab" aria-selected={selSh === sh} class={`tc-sh${have < 4 ? ' short' : ''}${selSh === sh ? ' on' : ''}`} onClick={() => setSelSh(selSh === sh ? null : sh)}><span class="small">{sh}</span><b>{have}</b><span class="tc-time">{SHIFTS[sh].label}</span></button>; })}</div>
+        {selSh && <div class="tc-people">{todays.filter((a) => a.shift === selSh).sort((a, b) => a.unitId.localeCompare(b.unitId)).map((a) => { const st = staffById(a.staffId); const hs = healthOf(a.staffId); return (
+          <div key={a.id} class={`tc-p${a.status === 'absent' ? ' absent' : ''}`}>
+            <span class="tc-u">{unitName(a.unitId)}</span>
+            <button class="link tc-n" onClick={() => openStaff(a.staffId)}>{st.name}</button>
+            {st.skills.includes('medical') && <span class="b1 sk-medical" title="医療的ケア">医</span>}
+            <span class="small tc-pt">{a.status === 'absent' ? '休み' : SHIFTS[a.shift].label}</span>
+            <span class={`hs ${hs.cls}`}>{hs.label}</span>
+          </div>); })}</div>}
+        <div class="tc-h" style="margin-top:12px">これからの行事（7日以内）</div>
+        {upcoming.length ? <div class="tc-evs">{upcoming.slice(0, 4).map((e) => <button key={e.id} class="tc-ev" onClick={() => go('day', { date: e.date })}><span class="evc" style={`background:${EVENT_STYLE[e.kind].bg};color:${EVENT_STYLE[e.kind].fg}`}>{fmtMD(e.date).replace(/（.）/, '')}</span><span>{e.title}</span></button>)}</div> : <p class="small">7日以内の行事はありません</p>}
+        <div class="tc-health">
+          <div class="row spread wrap" style="gap:8px"><div class="tc-h" style="margin:0">体調（今日の勤務 {onDuty.length}名）</div>{missing.length > 0 && <button class="btn sm" onClick={() => { const n = remindHealth(missing.map((a) => a.staffId)); setToast(`未入力の${n}名に催促しました`); }}>未入力 {missing.length}名をまとめて催促</button>}</div>
+          <div class="hl-list">{healthRows.map(({ a, h, lv }) => (
+            <button key={a.id} class={`hl-row ${lv}`} onClick={() => openStaff(a.staffId)}>
+              <span class="hl-n">{staffById(a.staffId).name}</span>
+              <span class="small hl-u">{unitName(a.unitId)}・{a.shift}</span>
+              <span class="hl-d">{h ? [`${h.temp.toFixed(1)}℃`, ...h.symptoms, h.household !== '症状なし' ? `家族：${h.household}` : '', h.consult ? '相談したい' : ''].filter(Boolean).join('・') : ''}</span>
+              <span class={`hs ${lv}`}>{lv === 'bad' ? '要確認' : lv === 'warn' ? '未入力' : '入力済み'}</span>
+            </button>))}</div>
         </div>
       </section>
       </div>
       {post && s.vacancies.find((v) => v.id === post)?.jobPost && <PostSheet v={s.vacancies.find((v) => v.id === post)!} reasons={skillReasons(s.assignments, s.vacancies.find((v) => v.id === post)!)} onClose={() => setPost(null)} />}
 
 
+      <TodayTimeline s={s} go={go} openStaff={openStaff} />
       <Outlook onMore={() => go('ai', { aiTab: 'insights' })} />
       {auto.length > 0 && <details class="card" style="margin-top:12px"><summary>シフト作成君が自動反映した変更（{auto.length}件）</summary>
         <div class="stack" style="gap:8px;margin-top:8px">{auto.map((r) => <div key={r.id} class="small" style="color:var(--tx)">{staffById(r.staffId).name}：{fmtMD(r.date)} {r.kind}{r.detail ? `（${r.detail}）` : ''}</div>)}</div></details>}
