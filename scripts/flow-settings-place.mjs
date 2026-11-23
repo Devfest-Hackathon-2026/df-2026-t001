@@ -349,14 +349,16 @@ const browser = await chromium.launch({ headless: true });
   const ruleSeeText = await page.locator('.plan .rule-see-list').innerText().catch(() => '');
   record(
     ruleSeeText.includes('労務の目安（警告）') &&
-      ruleSeeText.includes('作成の上限') &&
-      ruleSeeText.includes('月7回はまだ使っていません'),
+      ruleSeeText.includes('作成の上限'),
     'K3 「守るルール」の「見る」で労務の目安とはじめの条件の「守ること」の両方が出る',
   );
   await shot(page, '12-plan-rule-see-desktop.png');
 
   // 労務を見る → ブラウザ戻るでシフト作成へ
   await page.getByRole('button', { name: '労務を見る' }).click();
+  await page.waitForTimeout(200);
+  record((await page.getByRole('dialog').innerText().catch(() => '')).includes('連勤'), 'K3 「労務を見る」でその場にルールの一覧が開く');
+  await page.getByRole('button', { name: '労務の画面へ' }).click();
   await page.waitForTimeout(300);
   const laborText = await page.locator('main').innerText();
   record(laborText.includes('連勤は5日まで') && laborText.includes('要確認'), 'K3 「労務を見る」で労務画面へ移動する');
@@ -368,6 +370,8 @@ const browser = await chromium.launch({ headless: true });
   await page.locator('.plan .ck', { hasText: '守るルール' }).locator('details.ck-more > summary').click();
   await page.waitForTimeout(150);
   await page.getByRole('button', { name: '設定を見る' }).click();
+  await page.waitForTimeout(200);
+  await page.getByRole('button', { name: '設定を変える' }).click();
   await page.waitForTimeout(300);
   record(
     (await page.locator('[data-setup-embed="rules"]').count()) === 1,

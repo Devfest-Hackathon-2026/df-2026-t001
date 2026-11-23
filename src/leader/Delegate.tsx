@@ -9,7 +9,7 @@ import {
 import type { State } from '../core/store';
 import type { Vacancy } from '../core/types';
 import { Icon, Modal } from '../shared/ui';
-import { DayImpact, PlanBeforeAfter, ResolvedView, SkillSituation } from './Impact';
+import { DayImpact, PlanBeforeAfter, ResolvedSummary, ResolvedView, SkillSituation } from './Impact';
 import { Applicants, JobPreview, PRIORITY_NOTE, SkillWhy } from './Job';
 import { PostFlow, PostSheet, RelayCard } from './Auto';
 import { PLAN_LABEL } from './Adjust';
@@ -46,7 +46,7 @@ export function Steps4({ v, s }: { v: Vacancy; s: State }) {
         : m === 'running' || m === 'paused' ? [adj ? 'on' : 'skip', 'cur', '', '']
           : m === 'waiting_post' || m === 'posted' || usedJob ? [adj ? 'on' : 'skip', 'on', 'cur', '']
             : ['', '', '', ''];
-  return <div class="stepper steps4">{['時間調整の確認', '打診', '求人', '充足'].map((t, i) => <div key={t} class={`st${st[i] === 'on' ? ' on' : ''}${st[i] === 'cur' ? ' cur' : ''}${st[i] === 'skip' ? ' skip' : ''}`}><span class="n">{st[i] === 'on' ? <Icon n="check" sm /> : i + 1}</span>{t}</div>)}</div>;
+  return <div class="stepper steps4">{['時間をずらす', '声かけ', '求人', '埋まった'].map((t, i) => <div key={t} class={`st${st[i] === 'on' ? ' on' : ''}${st[i] === 'cur' ? ' cur' : ''}${st[i] === 'skip' ? ' skip' : ''}`}><span class="n">{st[i] === 'on' ? <Icon n="check" sm /> : i + 1}</span>{t}</div>)}</div>;
 }
 
 /** ほかの職員に影響する時間調整の承認 */
@@ -87,8 +87,8 @@ export function ResultCard({ s, v, go, openStaff }: { s: State; v: Vacancy; go: 
     <section class="card okcard">
       <h3 class="h3"><Icon n="check_circle" fill /> {title}</h3>
       <Steps4 v={v} s={s} />
-      <h4 class="sec-title" style="margin:12px 0 6px">どう解消したか（該当の行だけ）</h4>
-      {v.resolution ? <ResolvedView s={s} v={v} /> : v.resolvedBy === 'adjust' && changes.length > 0 ? <ul style="margin:8px 0 0 18px;font-size:14px">{changes.map((t, i) => <li key={i}>{t}</li>)}</ul> : <p class="small">対応の記録が残っていません。</p>}
+      {v.resolution && <ResolvedSummary s={s} v={v} />}
+      {v.resolution ? <details class="more" style="margin-top:8px"><summary>詳しく（時間ごとの前と後）</summary><ResolvedView s={s} v={v} /></details> : v.resolvedBy === 'adjust' && changes.length > 0 ? <ul style="margin:8px 0 0 18px;font-size:14px">{changes.map((t, i) => <li key={i}>{t}</li>)}</ul> : <p class="small">対応の記録が残っていません。</p>}
       <p class="muted" style="margin-top:8px">日次・月次に反映済みで、関係する職員へ通知しました。{who && !v.resolvedBy && <> <button class="link" onClick={() => openStaff(who)}>{staffById(who).name}さんを見る</button></>}</p>
       <div class="row wrap" style="margin-top:8px"><button class="btn sm" onClick={() => go('day', { date: v.date })}><Icon n="schedule" sm /> その日の1日を見る</button></div>
     </section>

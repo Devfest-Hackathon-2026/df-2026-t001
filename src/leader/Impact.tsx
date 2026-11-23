@@ -158,6 +158,30 @@ export function ResolvedView({ s, v }: { s: { assignments: Assignment[] }; v: Va
   return <BeforeAfter v={v} before={s.assignments.filter((a) => a.id !== filler.id)} after={s.assignments} rowIds={[filler.id]} tags={{ [filler.id]: '入った' }} beforeTitle="入る前" afterTitle={`${nm}さんが入った後`} afterCaption={`${nm}さんが${v.shift}（${unitName(v.unitId)}）に入り、不足していた時間をつなぎました`} />;
 }
 
+/** 解消したあと：前と後の手薄な時間の数だけを1行で（行ごとの図は「詳しく」に畳む） */
+export function ResolvedSummary({ s, v }: { s: { assignments: Assignment[] }; v: Vacancy }) {
+  const r = v.resolution;
+  const pair = useMemo(() => {
+    if (!r) return null;
+    if (r.kind === 'adjust' && r.changes?.length) {
+      const ids = r.changes.map((c) => c.assignmentId);
+      const before = s.assignments.map((a) => (ids.includes(a.id) ? { ...a, adjust: undefined } : a.id === v.fromAssignmentId ? { ...a, covered: false } : a));
+      return { b: issuesFor(v, before).length, a: issuesFor(v, s.assignments).length, how: r.title ?? '時間の調整' };
+    }
+    const filler = s.assignments.find((a) => a.date === v.date && a.shift === v.shift && a.unitId === v.unitId && a.status !== 'absent' && a.staffId === (r.staffId ?? v.filledBy));
+    if (!filler) return null;
+    return { b: issuesFor(v, s.assignments.filter((a) => a.id !== filler.id)).length, a: issuesFor(v, s.assignments).length, how: `${staffById(filler.staffId).name}さんが入る` };
+  }, [s.assignments, v.id]);
+  if (!pair) return null;
+  return (
+    <div class="rsum">
+      <div><span class="small">前</span><b>手薄な時間 {pair.b}か所</b></div>
+      <Icon n="arrow_forward" />
+      <div><span class="small">{pair.how}</span><b class={pair.a ? '' : 'ok'}>{pair.a ? `${pair.a}か所` : '0か所（解消）'}</b></div>
+    </div>
+  );
+}
+
 /** 調整案：いま／この案の後 */
 export function PlanBeforeAfter({ all, v, plan, name }: { all: Assignment[]; v: Vacancy; plan: AdjustPlan; name?: string }) {
   const after = useMemo(() => applyAdjust(all, plan.changes), [all, plan.id]);

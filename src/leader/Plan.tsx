@@ -125,6 +125,7 @@ export function Plan({ s, onOpen, go, openStaff, openResident }: { s: State; onO
   const defaultNightMax = SETUP_USAGE.rules && savedSetupState ? savedSetupState.rules.nightMax : 8;
   const solvingNow = planSolving()?.month === month;
   const [nightCap, setNightCap] = useState(false);
+  const [ruleM, setRuleM] = useState(false);
   const [tabSel, setTab] = useState<'after' | 'before' | null>(null);
   const [rcOpen, setRcOpen] = useState(false);
   const openCheck = (t: 'after' | 'before') => { setTab(t); if (t === 'after') setRcOpen(true); setTimeout(() => document.getElementById('plan-check')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); };
@@ -250,8 +251,8 @@ export function Plan({ s, onOpen, go, openStaff, openResident }: { s: State; onO
           <CheckRow lv="ok" title="守るルール" text={`労務ルール${chatRuleN ? `＋追加${chatRuleN}本` : ''}`}
             detail={<details class="ck-more"><summary>見る</summary>
               <div class="rule-see-list">
-              <div class="row-li"><span class="small">労務の目安（警告）：連勤{LABOR_RULES.maxConsecutive}日まで・勤務間{LABOR_RULES.minIntervalH}時間・夜勤月{LABOR_RULES.maxNightsPerMonth}回・公休月{LABOR_RULES.minOffDays}日</span><button type="button" class="btn sm" onClick={() => onOpen?.('labor')}>労務を見る</button></div>
-              <div class="row-li"><span class="small">作成の上限：夜勤 月{defaultNightMax}回{!SETUP_USAGE.rules && savedSetupState ? `（はじめの条件の値 月${savedSetupState.rules.nightMax}回は${usageChipLabel(false)}）` : ''}</span><button type="button" class="btn sm" onClick={() => onOpen?.('settings:rules')}>設定を見る</button></div>
+              <div class="row-li"><span class="small">労務の目安（警告）：連勤{LABOR_RULES.maxConsecutive}日まで・勤務間{LABOR_RULES.minIntervalH}時間・夜勤月{LABOR_RULES.maxNightsPerMonth}回・公休月{LABOR_RULES.minOffDays}日</span><button type="button" class="btn sm" onClick={() => setRuleM(true)}>労務を見る</button></div>
+              <div class="row-li"><span class="small">作成の上限：夜勤 月{defaultNightMax}回</span><button type="button" class="btn sm" onClick={() => setRuleM(true)}>設定を見る</button></div>
               </div>
               <ChatRuleList onToast={setToast} />
             </details>} />
@@ -281,6 +282,21 @@ export function Plan({ s, onOpen, go, openStaff, openResident }: { s: State; onO
         <p>{+month.slice(5)}月の勤務表・日次・月次が、この内容に置き換わります。</p>
         <ul style="margin:8px 0 0 18px"><li>希望休：{plan.stats.dayOffTotal}件中{plan.stats.dayOffHonored}件を反映</li><li>人が足りない日：{plan.stats.shortDays}日（欠員枠 {plan.stats.vacantSlots}）</li><li>労務の警告：{warnList.length}件</li></ul>
         {plan.stats.shortDays > 0 && <p class="small" style="margin-top:8px;color:var(--bad)">人が足りない日が残っています。公開後は欠員として、シフト作成君に任せて対応できます。</p>}
+      </Modal>}
+      {ruleM && <Modal title="作るときに守るルール" onClose={() => setRuleM(false)} footer={<><button class="btn" onClick={() => { setRuleM(false); onOpen?.('labor'); }}>労務の画面へ</button><button class="btn" onClick={() => { setRuleM(false); onOpen?.('settings:rules'); }}>設定を変える</button><button class="btn pri" onClick={() => setRuleM(false)}>閉じる</button></>}>
+        <table class="rule-tbl">
+          <thead><tr><th>ルール</th><th>値</th><th>守り方</th></tr></thead>
+          <tbody>
+            <tr><td>連勤</td><td>{LABOR_RULES.maxConsecutive}日まで</td><td>超えたら警告</td></tr>
+            <tr><td>勤務と勤務のあいだ</td><td>{LABOR_RULES.minIntervalH}時間以上</td><td>超えたら警告</td></tr>
+            <tr><td>夜勤の回数</td><td>月{defaultNightMax}回まで</td><td>作るときの上限{nightCap ? '（今回は6回）' : ''}</td></tr>
+            <tr><td>夜勤の回数（目安）</td><td>月{LABOR_RULES.maxNightsPerMonth}回まで</td><td>超えたら警告</td></tr>
+            <tr><td>公休</td><td>月{LABOR_RULES.minOffDays}日以上</td><td>下回ったら警告</td></tr>
+            <tr><td>夜勤明け</td><td>翌日は休み</td><td>必ず守る</td></tr>
+            {getChatRules().filter((r) => r.on).map((r) => <tr key={r.id}><td colSpan={2}>{r.label}</td><td>{r.strength === '絶対' ? '必ず守る' : 'できるだけ守る'}<span class="small">（チャットで追加）</span></td></tr>)}
+          </tbody>
+        </table>
+        <p class="small" style="margin-top:8px">値は仮の値です。施設に合わせて「設定を変える」から直せます。</p>
       </Modal>}
       {toast}
     </div>

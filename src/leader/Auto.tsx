@@ -60,7 +60,7 @@ export function AskCard({ s, v }: { s: State; v: Vacancy }) {
 }
 
 /** 申請カードの操作：1タップで「承認＋代わりを自動で探す」 */
-export function ReqActions({ r, s }: { r: ShiftRequest; s: State }) {
+export function ReqActions({ r, s, onDone }: { r: ShiftRequest; s: State; onDone?: (id: string) => void }) {
   const [conf, setConf] = useState(false);
   if (r.status !== 'pending') return null;
   const absence = r.kind === '休み' || r.kind === '希望休';
@@ -68,20 +68,20 @@ export function ReqActions({ r, s }: { r: ShiftRequest; s: State }) {
     <div class="row wrap" style="margin-top:12px">
       {s.autopilot.enabled
         ? <>
-            <button class="btn pri" onClick={() => decideRequest(r.id, true, true)}>承認して、シフト作成君に任せる</button>
+            <button class="btn pri" onClick={() => { onDone?.(r.id); decideRequest(r.id, true, true); }}>承認して、シフト作成君に任せる</button>
             <details class="more-menu">
               <summary class="btn">ほかの対応 <Icon n="expand_more" sm /></summary>
               <div class="more-pop">
-                <button class="btn sm" onClick={() => decideRequest(r.id, true, false)}>承認だけする（自分で手配）</button>
+                <button class="btn sm" onClick={() => { onDone?.(r.id); decideRequest(r.id, true, false); }}>承認だけする（自分で手配）</button>
                 <button class="btn sm danger" onClick={() => setConf(true)}>見送る</button>
               </div>
             </details>
           </>
         : <>
-            <button class="btn pri" onClick={() => decideRequest(r.id, true, false)}>承認する</button>
+            <button class="btn pri" onClick={() => { onDone?.(r.id); decideRequest(r.id, true, false); }}>承認する</button>
             <button class="btn danger" onClick={() => setConf(true)}>見送る</button>
           </>}
-      {conf && <Modal title="見送りにしますか？" onClose={() => setConf(false)} footer={<><button class="btn" onClick={() => setConf(false)}>戻る</button><button class="btn danger" onClick={() => { decideRequest(r.id, false); setConf(false); }}>見送りにする</button></>}>
+      {conf && <Modal title="見送りにしますか？" onClose={() => setConf(false)} footer={<><button class="btn" onClick={() => setConf(false)}>戻る</button><button class="btn danger" onClick={() => { onDone?.(r.id); decideRequest(r.id, false); setConf(false); }}>見送りにする</button></>}>
         <p>{staffById(r.staffId).name}さんの{fmtMD(r.date)} {r.kind}を見送ります。本人に通知され、シフトは変わりません。</p></Modal>}
     </div>
   );

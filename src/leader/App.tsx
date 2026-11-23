@@ -23,10 +23,10 @@ import { AiHub } from './ai/AiHub';
 type G = 'dash' | 'shift' | 'todo' | 'people' | 'health' | 'chat' | 'settings';
 const NAV: { g: G; to: View; icon: string; label: string }[] = [
   { g: 'dash', to: 'dash', icon: 'dashboard', label: 'ホーム' }, { g: 'shift', to: 'month', icon: 'calendar_month', label: 'シフト' }, { g: 'todo', to: 'vac', icon: 'task_alt', label: '要対応' },
-  { g: 'people', to: 'people', icon: 'groups', label: '職員' }, { g: 'health', to: 'health', icon: 'monitor_heart', label: '体調' }, { g: 'chat', to: 'chat', icon: 'chat', label: 'チャット' },
+  { g: 'people', to: 'people', icon: 'groups', label: '職員' }, { g: 'chat', to: 'chat', icon: 'chat', label: 'チャット' },
 ];
 const SETTINGS = { g: 'settings' as G, to: 'auto' as View, icon: 'settings', label: '設定' };
-const groupOf = (v: View): G => (v === 'month' || v === 'day' || v === 'plan' ? 'shift' : v === 'auto' || v === 'ai' ? 'settings' : v === 'vac' || v === 'req' ? 'todo' : v === 'people' || v === 'labor' || v === 'collect' ? 'people' : v);
+const groupOf = (v: View): G => (v === 'month' || v === 'day' || v === 'plan' ? 'shift' : v === 'auto' || v === 'ai' ? 'settings' : v === 'vac' || v === 'req' ? 'todo' : v === 'people' || v === 'labor' || v === 'collect' ? 'people' : v === 'health' ? 'dash' : v);
 
 export function App() {
   const s = useStore();
@@ -156,7 +156,7 @@ export function App() {
         {items.map((n) => { const on = active === n.g; const cnt = badge(n.g);
           return <button key={n.g} class={`nv${on ? ' on' : ''}`} onClick={() => go(on ? nav.view : n.to)} aria-current={on ? 'page' : undefined}><span class="pill"><Icon n={n.icon} fill={on} />{cnt > 0 && <span class="badge" style="position:absolute;top:-4px;right:-2px">{cnt}</span>}</span><span>{n.label}</span></button>; })}
         {side && <button class={`nv settings${active === 'settings' ? ' on' : ''}`} onClick={() => go(SETTINGS.to, { setupSection: undefined })} aria-current={active === 'settings' ? 'page' : undefined}><span class="pill"><Icon n={SETTINGS.icon} fill={active === 'settings'} /></span><span>{SETTINGS.label}</span></button>}
-        {!side && <button class={`nv${active === 'people' || active === 'health' || active === 'settings' ? ' on' : ''}`} onClick={() => setMore(true)}><span class="pill"><Icon n="more_horiz" /></span><span>その他</span></button>}
+        {!side && <button class={`nv${active === 'people' || active === 'settings' ? ' on' : ''}`} onClick={() => setMore(true)}><span class="pill"><Icon n="more_horiz" /></span><span>その他</span></button>}
       </nav>
       <main class="content">{sub}<div class="body">{body}</div></main>
       {bell && <div class="pop" role="dialog" aria-label="お知らせ"><div class="row spread" style="padding:12px 16px"><b style="font-weight:500">お知らせ</b><button class="btn sm" onClick={() => readAll('leader')}>すべて既読</button></div>
@@ -166,7 +166,6 @@ export function App() {
         <button class="listbtn" onClick={() => go('people')}><span><Icon n="groups" /> 職員・入居者</span><Icon n="chevron_right" /></button>
         <button class="listbtn" onClick={() => go('labor')}><span><Icon n="rule" /> 労務チェック・集計</span><Icon n="chevron_right" /></button>
         <button class="listbtn" onClick={() => go('collect')}><span><Icon n="event_available" /> 希望休の収集</span><Icon n="chevron_right" /></button>
-        <button class="listbtn" onClick={() => go('health')}><span><Icon n="monitor_heart" /> 体調チェック</span><Icon n="chevron_right" /></button>
         <button class="listbtn" onClick={() => { location.href = './setup.html'; }}><span><Icon n="tune" /> はじめの条件</span><Icon n="chevron_right" /></button>
         <button class="listbtn" onClick={() => go('auto', { setupSection: undefined })}><span><Icon n="settings" /> 設定</span><Icon n="chevron_right" /></button></div></Modal>}
       {staff && <StaffModal id={staff} onClose={() => setStaff(null)} />}

@@ -562,6 +562,12 @@ export function submitDayOff(staffId: string, dates: string[]) {
   }));
 }
 /** 未提出者に催促を送る。送った事実を残し、デモでは数名が数秒後に自動で提出する */
+/** 今日の体調チェックが未入力の人に、まとめて催促する（通知のみ） */
+export function remindHealth(ids: string[]): number {
+  if (!ids.length) return 0;
+  set((s) => ({ notices: [...ids.map((id) => notice({ to: id, kind: 'info', title: '今日の体調チェックをお願いします', body: '出勤前に、ホームの「出勤前の体調チェック」から入力してください。' })), ...s.notices] }));
+  return ids.length;
+}
 export function remindUnsubmitted(): number {
   const left = Object.entries(state.collection.submitted).filter(([, v]) => !v).map(([id]) => id);
   if (!left.length) return 0;

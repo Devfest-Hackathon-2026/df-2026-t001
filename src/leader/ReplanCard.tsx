@@ -9,7 +9,10 @@ import { Icon } from '../shared/ui';
 
 export function ReplanNote({ v }: { v: Vacancy }) {
   const r = v.auto?.replan; if (!r) return null;
-  return <p class="small" style="margin-top:6px" data-testid="replan-note"><Icon n="rule" sm /> {verdictText(r)}{v.auto?.replanUse === 'check' && r.ok ? '（画面の案と比べ、変わる勤務が少ないほうを提案しています）' : ''}</p>;
+  // 時間をずらす案を出しているときに、ソルバーの別の案（勤務の入れ替え）の中身を並べると、画面の案と食い違って見える。
+  // ここでは「ルールの確認を通った」ことだけを書き、別の案の中身は欠員の記録に残す
+  if (v.auto?.replanUse === 'check') return <p class="small" style="margin-top:6px" data-testid="replan-note"><Icon n="rule" sm /> ソルバーでも、この日の勤務がルールどおり組めることを確かめました</p>;
+  return <p class="small" style="margin-top:6px" data-testid="replan-note"><Icon n="rule" sm /> {verdictText(r)}</p>;
 }
 
 export function SolverPlanCard({ v }: { v: Vacancy }) {

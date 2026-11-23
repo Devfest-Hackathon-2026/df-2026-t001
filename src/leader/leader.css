@@ -305,3 +305,73 @@ input.sw:checked { background: var(--pri); } input.sw:checked::after { transform
 .vfacts { list-style: none; margin: 10px 0 0; padding: 10px 12px; display: flex; flex-wrap: wrap; gap: 4px 16px; background: var(--bg2); border-radius: 10px; font-size: 14px; }
 .vfacts li { white-space: nowrap; }
 @media (min-width: 900px) { .toast { left: auto; right: 24px; bottom: 24px; transform: none; } }
+
+/* ホーム：今日の勤務と行事（1枚）・体調 */
+.today-card, .health-card { margin-top: 12px; }
+.today-grid { display: grid; grid-template-columns: 1.1fr 1fr 1.2fr; gap: 16px 24px; margin-top: 10px; }
+.today-grid > div { min-width: 0; }
+.tc-h { font-size: 12px; color: var(--tx2); margin-bottom: 6px; }
+.tc-shifts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.tc-sh { display: flex; flex-direction: column; align-items: center; padding: 6px 0; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.tc-sh b { font-size: 20px; font-weight: 500; }
+.tc-sh.short { border-color: #f3c9c5; background: var(--bad-bg); }
+.tc-ev { display: flex; align-items: center; gap: 8px; text-align: left; font-size: 13px; min-height: 28px; }
+.tc-ev .evc { flex-shrink: 0; }
+.hc-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border-radius: 12px; background: var(--bad-bg); text-align: left; }
+.hc-name { font-weight: 500; font-size: 16px; }
+.hc-why { flex: 1; min-width: 0; font-size: 13px; color: var(--tx2); }
+.hc-miss { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line2); font-size: 14px; gap: 8px; }
+@media (max-width: 899px) { .today-grid { grid-template-columns: 1fr; } }
+
+/* 1日：足りない時間を時間帯ごとに。赤はスキル不足だけ、人数不足は落ち着いた色 */
+.short-sum.calm { background: #f1f4f8; border-color: #d5dde8; } .short-sum.calm > .ms { color: #4a5b73; }
+.band-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.band { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid #c9d3e0; background: #fff; color: #33445c; font-size: 13px; }
+.band.skill { border-color: var(--bad); color: var(--bad); }
+.band.on { background: #e8eef7; }
+.band .small { font-size: 11px; }
+.band-detail { flex-basis: 100%; margin: 4px 0 0 0; padding: 8px 12px; list-style: none; background: #fff; border-radius: 8px; font-size: 13px; max-height: 160px; overflow: auto; }
+.band-detail li { padding: 2px 0; } .band-detail .sk { color: var(--bad); font-weight: 500; }
+.sbar.calm { background: #b8c6da; } .hd-short.calm { background: #8fa3bf; }
+.vshort.calm { background: rgba(120, 144, 180, .08); box-shadow: inset 2px 0 0 rgba(120, 144, 180, .45), inset -2px 0 0 rgba(120, 144, 180, .45); }
+
+/* 欠員が埋まったあと：前と後の手薄な時間の数だけ */
+.rsum { display: flex; align-items: center; gap: 16px; margin-top: 12px; padding: 12px 16px; border-radius: 12px; background: var(--bg2); }
+.rsum > div { display: flex; flex-direction: column; } .rsum b { font-weight: 500; font-size: 16px; } .rsum b.ok { color: var(--ok); }
+
+/* ホーム：見出しの行（今日・天気・今日の行事）と、左右2列（要対応／今日の勤務） */
+.dash-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 12px; }
+.dash-head .ptitle { margin: 0; }
+.dash-ev { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.wx { display: inline-flex; align-items: center; gap: 6px; padding: 2px 12px 2px 6px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); }
+.wx-t { display: flex; flex-direction: column; line-height: 1.2; } .wx-t b { font-weight: 500; font-size: 13px; } .wx-t .small { font-size: 11px; }
+.dash-2col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+.dash-2col > .today-card { margin-top: 0; }
+.req-done { background: var(--bg2); }
+.req-st.done { margin-top: 8px; font-size: 14px; display: flex; align-items: center; gap: 6px; color: var(--tx); }
+.req-st.done .ms { color: var(--ok); }
+@media (max-width: 899px) { .dash-2col { grid-template-columns: 1fr; } }
+
+/* ホーム：天気は右上、今日の出勤のカードは幅に合わせて並びを変える（体調も中に） */
+.dash-wx { margin-left: auto; }
+.dash-ev .small { color: var(--tx2); }
+.today-card { container-type: inline-size; }
+.today-card .today-grid { grid-template-columns: 1fr; gap: 12px; }
+.today-card .today-grid > div { grid-column: auto; }
+.tc-health { border-top: 1px solid var(--line2); padding-top: 10px; }
+.tc-health .hc-row { padding: 8px 10px; } .tc-health .hc-name { font-size: 15px; }
+.tc-health .hc-miss { margin-top: 8px; padding-top: 0; border-top: 0; }
+@container (min-width: 520px) {
+  .today-card .today-grid { grid-template-columns: 1fr 1fr; }
+  .today-card .today-grid > div:first-child, .today-card .today-grid > .tc-health { grid-column: 1 / -1; }
+}
+@container (min-width: 820px) {
+  .today-card .today-grid { grid-template-columns: 1.2fr 1fr 1fr; }
+  .today-card .today-grid > div:first-child { grid-column: auto; }
+}
+@container (max-width: 380px) {
+  .today-card .nrow { padding: 2px 0; font-size: 13px; }
+  .today-card .tc-sh b { font-size: 17px; }
+}
+@media (min-width: 1500px) { .dash-2col { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
+@media (max-width: 599px) { .dash-wx { margin-left: 0; } .wx-t .small { display: none; } }

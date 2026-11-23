@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { DEFAULT_SHIFT_TYPES, shiftStyleOf, SKILLS, STAFF, UNITS, unitName, type ShiftTypeDef } from '../core/facility';
+import { DEFAULT_SHIFT_TYPES, shiftStyleOf, SKILLS, STAFF, UNITS, unitName, type ShiftTypeDef, staffById } from '../core/facility';
 import type { SkillId } from '../core/types';
 import { DOW_JA, addDays, daysInRange, dow, fmtMD } from '../core/dates';
 import { holidayOf, eventsOn } from '../core/events';
@@ -14,10 +14,12 @@ import { EVENT_STYLE } from './Events';
 
 type Plan = NonNullable<State['plan']>;
 const SK_ORDER: SkillId[] = ['medical', 'dementia', 'bath', 'swallow', 'terminal', 'driver'];
+const SK1: Partial<Record<SkillId, string>> = { medical: '医', dementia: '認', bath: '浴', swallow: '嚥', terminal: '看', driver: '送' };
 
 export function PlanGrid({ s, plan, month, days, ro, sums, onDay, onCell, onToast, shiftTypes = DEFAULT_SHIFT_TYPES }: { s: State; plan: Plan; month: string; days: string[]; ro: boolean; sums: Map<string, { level: string; vacant: number; issues: unknown[] }>; onDay: (d: string) => void; onCell: (staffId: string, date: string) => void; onToast: (t: string) => void; shiftTypes?: readonly ShiftTypeDef[] }) {
   const [unitF, setUnitF] = useState('all');
-  const [skillF, setSkillF] = useState<SkillId | 'all'>('all');
+  const [skSel, setSkSel] = useState<SkillId[]>([]); // 名前の右に札を出し、日ごとの人数を出すスキル（複数）
+  const [tint, setTint] = useState<'unit' | 'none'>('unit');
   const [sel, setSel] = useState<{ r0: number; c0: number; r1: number; c1: number } | null>(null);
   const [fillTo, setFillTo] = useState<{ r: number; c: number } | null>(null);
   const [unitSel, setUnitSel] = useState<'home' | string>('home');
@@ -85,7 +87,7 @@ export function PlanGrid({ s, plan, month, days, ro, sums, onDay, onCell, onToas
   const idx = useMemo(() => { const m = new Map<string, Assignment>(); for (const a of plan.draft) if (a.status !== 'absent') m.set(`${a.staffId}|${a.date}`, a); return m; }, [plan.draft]);
   const sub = s.collection.month === month ? s.collection.submitted : {};
   const dayOffOf = (id: string) => ((sub as Record<string, { dates: string[] } | null>)[id]?.dates ?? []);
-  const groups = UNITS.filter((u) => unitF === 'all' || u.id === unitF).map((u) => ({ u, rows: STAFF.filter((x) => x.shifts.length && x.homeUnit === u.id && (skillF === 'all' || x.skills.includes(skillF))) })).filter((g) => g.rows.length);
+  const groups = UNITS.filter((u) => unitF === 'all' || u.id === unitF).map((u) => ({ u, rows: STAFF.filter((x) => x.shifts.length && x.homeUnit === u.id) })).filter((g) => g.rows.length);
   const staffRows = groups.flatMap((g) => g.rows);
   const codeAt = (id: string, d: string): PlanCode => (s.paidLeave?.[id]?.includes(d) ? 'paid' : idx.get(`${id}|${d}`)?.shift ?? 'off');
   const norm = (r: NonNullable<typeof sel>) => ({ r0: Math.min(r.r0, r.r1), r1: Math.max(r.r0, r.r1), c0: Math.min(r.c0, r.c1), c1: Math.max(r.c0, r.c1) });
@@ -215,9 +217,6 @@ export function PlanGrid({ s, plan, month, days, ro, sums, onDay, onCell, onToas
         <div class="seg pg-units" role="group" aria-label="ユニットで絞り込む">
           {[{ id: 'all', name: '全体' }, ...UNITS.map((u) => ({ id: u.id, name: u.name }))].map((u) => <button key={u.id} aria-pressed={unitF === u.id} onClick={() => setUnitF(u.id)}>{u.name}</button>)}
         </div>
-        <select class="input pg-skill" value={skillF} onChange={(e) => setSkillF((e.target as HTMLSelectElement).value as SkillId | 'all')} aria-label="スキルで絞り込む">
-          {(['all', ...SK_ORDER] as const).map((k) => <option key={k} value={k}>{k === 'all' ? 'スキル：すべて' : `スキル：${SKILLS[k].label}`}</option>)}
-        </select>
       </div>
 
       {!ro && <div class="xl-bar" role="toolbar" aria-label="選択中のマスを変える">
@@ -259,7 +258,7 @@ export function PlanGrid({ s, plan, month, days, ro, sums, onDay, onCell, onToas
           <colgroup><col style="width:178px" />{shownPrev.map((d) => <col key={d} style="width:30px" />)}{days.map((d) => <col key={d} style="width:34px" />)}</colgroup>
           <thead>
             <tr class="pg-evrow">
-              <th class="nm"><span class="row" style="gap:6px;justify-content:space-between"><span class="small">行事</span><button class="linkbtn small" onClick={() => setShowPrev(!showPrev)} aria-expanded={showPrev}>{showPrev ? '◂ 前月を隠す' : '前月を見る ▸'}</button></span></th>
+              <th class="nm"><span class="small">行事</span></th>
               {shownPrev.length > 0 && <th colSpan={shownPrev.length} class="prev-h prev-end">前月7日（{+shownPrev[0].slice(5, 7)}月・編集不可）</th>}
               {days.map((d) => { const ev = evByDay(d); const e0 = ev[0]; const st = e0 ? EVENT_STYLE[e0.kind] : null;
                 return <th key={d} class={e0 ? 'evcol' : ''} title={ev.map((e) => `${e.kind}：${e.title}`).join('／')}>{e0 && st ? <span class="evl" style={`background:${st.bg};color:${st.fg}`}>{e0.title.slice(0, 2)}</span> : null}</th>; })}
@@ -280,12 +279,17 @@ export function PlanGrid({ s, plan, month, days, ro, sums, onDay, onCell, onToas
               {days.map((d) => { const k = shortKind(sums.get(d)); const sm = sums.get(d); const n = (sm?.vacant ?? 0) + (sm?.issues.length ?? 0); const sk = (sm?.issues as { kind: string }[] | undefined)?.filter((i) => i.kind === 'skill').length ?? 0;
                 return <th key={d} class={`${evByDay(d).length ? 'evcol' : ''}${k !== 'ok' ? ` col-${k}` : ''}`}><button class={`shb ${k}`} onClick={() => onDay(d)} title={n ? `不足 ${n}件（担当なし ${sm?.vacant ?? 0}・スキル ${sk}・人数 ${n - (sm?.vacant ?? 0) - sk}）：クリックでこの日の1日表示` : '不足なし'} aria-label={`${fmtMD(d)} 不足 ${n}件`}>{n || ''}</button></th>; })}
             </tr>
+            {skSel.map((k) => <tr key={k} class="skrow">
+              <th class="nm"><span class={`b1 sk-${k}`}>{SK1[k]}</span><span class="small">{SKILLS[k].label}の人</span></th>
+              {shownPrev.map((pd, i) => <th key={pd} class={`prev-col${i === shownPrev.length - 1 ? ' prev-end' : ''}`} />)}
+              {days.map((d) => { const n = plan.draft.filter((a) => a.date === d && a.status !== 'absent' && (unitF === 'all' || a.unitId === unitF) && staffById(a.staffId)?.skills.includes(k)).length; return <th key={d} class={`skc sk-${k}${n ? '' : ' none'}`} title={`${fmtMD(d)} ${SKILLS[k].label}ができる人：${n}人`}>{n}</th>; })}
+            </tr>)}
           </thead>
           <tbody>{groups.map(({ u, rows }) => <>
-            <tr key={u.id + 'h'} class="ugrp"><th colSpan={shownPrev.length + days.length + 1}><span>{u.floor}階 {u.name}</span></th></tr>
+            <tr key={u.id + 'h'} class={`ugrp${tint === 'unit' ? ` ut${UNITS.indexOf(u) % 4}` : ''}`}><th colSpan={shownPrev.length + days.length + 1}><span>{u.floor}階 {u.name}</span></th></tr>
             {rows.map((st) => { rowNo++; const r = rowNo; const off = dayOffOf(st.id); const pc = paidCount(s, st.id); const lack = PAID_TARGET - pc;
-              return <tr key={st.id}><td class="nm"><div class="nmc"><button class="link" style="font-size:13px" onClick={() => onCell(st.id, days[0])}>{st.name}</button>
-                {skillF !== 'all' && <span class="sk">{st.skills.filter((k) => k !== 'night').slice(0, 3).map((k) => <span key={k} class={`mini ${k === 'medical' ? 'bad' : ''}`} title={SKILLS[k].label}>{SHORT[k]}</span>)}</span>}
+              return <tr key={st.id} class={tint === 'unit' ? `ut${UNITS.findIndex((x) => x.id === st.homeUnit) % 4}` : undefined}><td class="nm"><div class="nmc"><button class="link" style="font-size:13px" onClick={() => onCell(st.id, days[0])}>{st.name}</button>
+                {skSel.some((k) => st.skills.includes(k)) && <span class="bd">{skSel.filter((k) => st.skills.includes(k)).map((k) => <span key={k} class={`b1 sk-${k}`} title={SKILLS[k].label}>{SK1[k]}</span>)}</span>}
                 <span class={`pl${lack > 0 ? ' lack' : ''}`} title={`有給休暇 今年度 ${pc}日／義務 ${PAID_TARGET}日（デモ用の仮値）`}>有休 {pc}/{PAID_TARGET}</span></div></td>
                 {shownPrev.map((pd, i) => {
                   const pa = prevIdx.get(`${st.id}|${pd}`);
@@ -324,7 +328,17 @@ export function PlanGrid({ s, plan, month, days, ro, sums, onDay, onCell, onToas
         <span class="lgt"><span class="mk-lock-demo"><Icon n="lock" sm /></span>固定（作り直しても残る）</span>
         <span class="lgt"><span class="mk-wish-demo" />勤務の希望</span>
         <span class="lgt"><span class="mk-prev-demo">早</span>前月7日（参照のみ）</span>
-        <span class="lgt"><span style="width:14px;height:6px;background:var(--bad);display:inline-block;border-radius:2px" />不足あり</span></div>
+        <span class="lgt"><span style="width:14px;height:6px;background:var(--bad);display:inline-block;border-radius:2px" />不足あり</span>
+        <details class="xl-more pg-view">
+          <summary class="pg-gear" aria-label="表示の設定"><Icon n="tune" sm /> 表示</summary>
+          <div class="xl-pop pg-view-pop">
+            <div class="small">行の色</div>
+            <div class="seg">{([['unit', 'ユニットごと'], ['none', 'なし']] as const).map(([k, l]) => <button key={k} aria-pressed={tint === k} onClick={() => setTint(k)}>{l}</button>)}</div>
+            <div class="small" style="margin-top:6px">名前の右に札と人数を出すスキル</div>
+            {SK_ORDER.map((k) => <label key={k} class="pg-ck"><input type="checkbox" checked={skSel.includes(k)} onChange={(e) => setSkSel((e.target as HTMLInputElement).checked ? SK_ORDER.filter((x) => x === k || skSel.includes(x)) : skSel.filter((x) => x !== k))} /><span class={`b1 sk-${k}`}>{SK1[k]}</span>{SKILLS[k].label}</label>)}
+            <label class="pg-ck" style="margin-top:6px"><input type="checkbox" checked={showPrev} onChange={(e) => setShowPrev((e.target as HTMLInputElement).checked)} />前月7日を表示</label>
+          </div>
+        </details></div>
       <p class="small" style="margin-top:6px">{ro ? '公開済み。変更は月間・1日の画面から。' : `マスを選んで ${shortKeysHint} で変更（変えたマスは固定）。ダブルクリックで詳しく設定。`}灰色の7列は前月。</p>
       {undo.length > 0 && <details class="more"><summary>直前の変更（{undo.length}件）</summary><ol class="xl-hist">{undo.slice().reverse().slice(0, 8).map((u, i) => <li key={i}><span>{u.label}</span>{i === 0 && <button class="linkbtn" onClick={doUndo}>元に戻す</button>}</li>)}</ol></details>}
       {req && one && <ReqModal s={s} staffId={one.st.id} date={one.d} shiftTypes={shiftTypes} onClose={() => setReq(false)} onSent={onToast} />}

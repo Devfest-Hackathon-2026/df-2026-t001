@@ -60,6 +60,14 @@ export function Day({ s, date, go, openStaff, openResident }: { s: State; date: 
   const scIssues: Iss[] = []; for (const i of scRaw) { const g = scIssues.find((x) => x.kind === i.kind && x.t0 === i.t0 && x.t1 === i.t1 && x.need === i.need && x.have === i.have); if (g) g.scopes.push(i.scope); else scIssues.push({ ...i, scopes: [i.scope] }); }
   const lanes: number[] = []; const placed = scIssues.map((i) => { let k = lanes.findIndex((end) => end <= i.t0); if (k < 0) { k = lanes.length; lanes.push(0); } lanes[k] = i.t1; return { i, lane: k }; });
   const nSkill = scRaw.filter((i) => i.kind === 'skill').length; const nHead = scRaw.length - nSkill;
+  // 足りない時間を時間帯ごとに1行にまとめる（ユニットの内訳は押したときだけ）
+  const norm = (t: number) => (t < 420 ? t + 1440 : t);
+  const BANDS = [{ k: 'am', l: '朝', a: 420, b: 750 }, { k: 'pm', l: '昼', a: 750, b: 1050 }, { k: 'ev', l: '夕', a: 1050, b: 1260 }, { k: 'nt', l: '夜間', a: 1260, b: 1860 }];
+  const bands = BANDS.map((bd) => { const its = scRaw.filter((i) => norm(i.t0) >= bd.a && norm(i.t0) < bd.b); return { ...bd, its, skill: its.filter((i) => i.kind === 'skill').length, units: Array.from(new Set(its.map((i) => i.scope))) }; }).filter((b) => b.its.length);
+  const [openBand, setOpenBand] = useState<string | null>(null);
+  // 帯は重なりをまとめて1本に（スキル不足を含む区間は赤、人数だけなら落ち着いた色）
+  const merged: { t0: number; t1: number; skill: boolean }[] = [];
+  for (const i of [...scIssues].sort((x, y) => x.t0 - y.t0)) { const last = merged[merged.length - 1]; if (last && i.t0 <= last.t1) { last.t1 = Math.max(last.t1, i.t1); last.skill = last.skill || i.kind === 'skill'; } else merged.push({ t0: i.t0, t1: i.t1, skill: i.kind === 'skill' }); }
   const jump = (t: number) => { const el = gridRef.current; if (el) el.scrollTo({ left: Math.max(0, px(t) - 60), behavior: 'smooth' }); };
   const shortLabel = (i: Iss) => (i.kind === 'skill' ? `${i.scopes.join('・')} 医療的ケア` : `${i.scopes.join('・')} ${i.have}/${i.need}名`);
   return (
@@ -89,23 +97,23 @@ export function Day({ s, date, go, openStaff, openResident }: { s: State; date: 
         {holidayOf(date) && <span class="chip bad">{holidayOf(date)}</span>}
         {dayEvents.map((e) => <span key={e.id} class="evc big" style={`background:${EVENT_STYLE[e.kind].bg};color:${EVENT_STYLE[e.kind].fg}`}>{e.title}{effectText(e) ? `（${effectText(e)}）` : ''}</span>)}
       </div>}
-      <div class={`short-sum ${scIssues.length ? (nSkill ? 'bad' : 'warn') : 'ok'}`} role="status">
+      <div class={`short-sum ${scIssues.length ? (nSkill ? 'bad' : 'calm') : 'ok'}`} role="status">
         <Icon n={scIssues.length ? 'warning' : 'check_circle'} sm />
-        {scIssues.length ? <><b>足りない時間 {scRaw.length}件</b>{nSkill > 0 && <span class="chip bad">スキル不足 {nSkill}</span>}{nHead > 0 && <span class="chip warn">人数不足 {nHead}</span>}
-          <span class="short-jumps">{scIssues.slice(0, 6).map((i, k) => <button key={k} class={`btn sm ${i.kind === 'skill' ? 'sj-bad' : 'sj-warn'}`} onClick={() => jump(i.t0)}>{issueTime(i)} {shortLabel(i)}</button>)}{scIssues.length > 6 && <span class="small">ほか{scIssues.length - 6}件（下の「人数とスキルのチェック」）</span>}</span></>
+        {scIssues.length ? <><b>足りない時間</b>
+          <span class="band-list">{bands.map((bd) => <button key={bd.k} class={`band${bd.skill ? ' skill' : ''}${openBand === bd.k ? ' on' : ''}`} aria-expanded={openBand === bd.k} onClick={() => { setOpenBand(openBand === bd.k ? null : bd.k); jump(bd.a >= 1440 ? bd.a - 1440 : bd.a); }}>{bd.l} {fmtHM(bd.a % 1440)}〜{fmtHM(bd.b % 1440)}<span class="small">{bd.units.length}ユニット{bd.skill ? '・スキル不足あり' : ''}</span></button>)}</span>
+          {openBand && <ul class="band-detail">{bands.find((b) => b.k === openBand)?.its.map((i, k) => <li key={k}><span class={i.kind === 'skill' ? 'sk' : ''}>{i.kind === 'skill' ? 'スキル' : '人数'}</span> {issueTime(i)} {i.scope}（必要{i.need}／いま{i.have}）</li>)}</ul>}</>
           : <span>この範囲では、人数・スキルの不足はありません</span>}
       </div>
       <div class="grid-wrap scroll" ref={gridRef}>
         <div style={`min-width:${NAMEW + W}px;position:relative`}>
           <div class="g-head"><div class="g-name head" style={`width:${NAMEW}px`}>職員／担当</div>
             <div class="track head" style={trackStyle}>{hours.map((t) => <span key={t} class="hl" style={`left:${px(t)}px`}>{t >= 1440 ? '翌' : ''}{fmtHM(t)}</span>)}
-              {scIssues.map((i, k) => <span key={k} class={`hd-short ${i.kind === 'skill' ? 'bad' : 'warn'}`} style={`left:${px(Math.max(i.t0, A))}px;width:${px(Math.min(i.t1, B)) - px(Math.max(i.t0, A))}px`} />)}</div></div>
-          {placed.length > 0 && <div class="g-row short-row" style={`height:${8 + lanes.length * 24}px`}>
-            <div class="g-name" style={`width:${NAMEW}px`}><span class="small" style="color:var(--bad);font-weight:500">足りない時間</span></div>
-            <div class="track" style={trackStyle}>{placed.map(({ i, lane }, k) => { const l = px(Math.max(i.t0, A)); const w = px(Math.min(i.t1, B)) - l;
-              return <button key={k} class={`sbar ${i.kind === 'skill' ? 'bad' : 'warn'}`} style={`left:${l}px;width:${Math.max(6, w - 2)}px;top:${4 + lane * 24}px`} title={`${i.kind === "skill" ? "スキル不足" : "人数不足"} ${issueTime(i)} ${i.scopes.join("・")}（必要${i.need}／現在${i.have}）`} onClick={() => jump(i.t0)}>{w > 70 ? `${i.kind === 'skill' ? 'スキル' : '人数'}：${shortLabel(i)}` : ''}</button>; })}</div>
+              {merged.map((m, k) => <span key={k} class={`hd-short ${m.skill ? 'bad' : 'calm'}`} style={`left:${px(Math.max(m.t0, A))}px;width:${px(Math.min(m.t1, B)) - px(Math.max(m.t0, A))}px`} />)}</div></div>
+          {merged.length > 0 && <div class="g-row short-row" style="height:30px">
+            <div class="g-name" style={`width:${NAMEW}px`}><span class="small" style="font-weight:500">足りない時間</span></div>
+            <div class="track" style={trackStyle}>{merged.map((m, k) => { const l = px(Math.max(m.t0, A)); const w = px(Math.min(m.t1, B)) - l; return <button key={k} class={`sbar ${m.skill ? 'bad' : 'calm'}`} style={`left:${l}px;width:${Math.max(6, w - 2)}px;top:5px`} title={`${fmtHM(m.t0)}〜${fmtHM(m.t1)} ${m.skill ? 'スキル不足あり' : '人数不足'}`} onClick={() => jump(m.t0)} />; })}</div>
           </div>}
-          {scIssues.map((i, k) => { const l = px(Math.max(i.t0, A)); const w = px(Math.min(i.t1, B)) - l; return <span key={'v' + k} class={`vshort ${i.kind === 'skill' ? 'bad' : 'warn'}`} aria-hidden="true" style={`left:${NAMEW + l}px;width:${w}px`} />; })}
+          {merged.map((m, k) => { const l = px(Math.max(m.t0, A)); const w = px(Math.min(m.t1, B)) - l; return <span key={'v' + k} class={`vshort ${m.skill ? 'bad' : 'calm'}`} aria-hidden="true" style={`left:${NAMEW + l}px;width:${w}px`} />; })}
 
           <button class="g-grp acc" aria-expanded={!closed.head} onClick={() => toggle('head')}><span class="acc-in"><Icon n={closed.head ? 'chevron_right' : 'expand_more'} sm /> ユニットごとの人数</span></button>
           {!closed.head && [...UNITS.filter((u) => scope === 'all' || (scope[0] === 'F' ? u.floor === +scope.slice(1) : u.id === scope)).map((u) => ({ id: u.id, name: `${u.name}（${u.floor}階）`, day: true as const, fn: (r: DayRow) => r.assignment.unitId === u.id })), ...[1, 2].filter((f) => scope === 'all' || (scope[0] === 'F' ? f === +scope.slice(1) : f === floorOf(scope))).map((f) => ({ id: `F${f}`, name: `${f}階 夜間`, day: false as const, fn: (r: DayRow) => floorOf(r.assignment.unitId) === f }))].map((u) => (
@@ -137,13 +145,13 @@ export function Day({ s, date, go, openStaff, openResident }: { s: State; date: 
         </div>
       </div>
       <div class="split2">
-        <section class="card">
-          <h3>人数とスキルのチェック</h3>
+        <details class="card">
+          <summary class="h3" style="cursor:pointer">人数とスキルのチェック <span class="small">（{issues.length ? `${issues.length}件` : '問題なし'}）</span></summary>
           {issues.length === 0 && <p class="muted" style="margin-top:8px">必要人数・休憩・医療的ケアの検証で問題ありません。</p>}
-          <ul class="issues" style="margin-top:8px">{issues.map((i, k) => <li key={k}><span class={`chip ${i.kind === 'skill' ? 'bad' : 'warn'}`}>{i.kind === 'skill' ? 'スキル不足' : '人数不足'}</span> <b style="font-weight:500">{issueTime(i)}</b> {i.text}（必要{i.need}／現在{i.have}）</li>)}</ul>
+          <ul class="issues" style="margin-top:8px">{issues.map((i, k) => <li key={k}><span class={`chip ${i.kind === 'skill' ? 'bad' : ''}`}>{i.kind === 'skill' ? 'スキル不足' : '人数不足'}</span> <b style="font-weight:500">{issueTime(i)}</b> {i.text}（必要{i.need}／現在{i.have}）</li>)}</ul>
           {issues.length > 0 && <div class="fix"><span class="small">修正案：</span>{vacs.length ? vacs.map((v) => <button key={v.id} class="btn sm tonal" onClick={() => go('vac', { vacId: v.id })}>{v.id} の候補を見る</button>) : <span class="muted">休憩時刻の入れ替えや他ユニットからのフォローを検討してください。</span>}</div>}
           {vacs.length > 0 && issues.length === 0 && <div class="fix"><span class="small">この日の欠員：</span>{vacs.map((v) => <button key={v.id} class="btn sm tonal" onClick={() => go('vac', { vacId: v.id })}>{v.id}</button>)}</div>}
-        </section>
+        </details>
         <section class="card">
           <h3>休憩・仮眠の交代</h3>
           <p class="small" style="margin:4px 0 8px">全員が同時に休まないよう、ユニットごとに時間をずらしています。</p>

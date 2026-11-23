@@ -211,6 +211,8 @@ def rule_label(
         else:
             sh = _shifts_ja(rule.shifts, shift_names, work_ids)
             what = f"{sh}に入る" if rule.want else f"{sh}に入らない"
+        if subj == "全員":  # 「全員は…」は不自然なので、全員のときは「だれも」「みんな」で書く
+            return f"{when_p}{sh}にはだれも入れない" if (rule.shifts.ids != [OFF] and not rule.want) else f"{when_p}{what}"
         return f"{subj}は{when_p}{what}"
 
     if rtype == "succession":

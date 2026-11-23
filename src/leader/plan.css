@@ -240,3 +240,46 @@
 /* iPad 幅で表を広く：応援は色の点、有休は灰色 */
 .pgrid .xu-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: currentColor; margin-left: 2px; vertical-align: top; opacity: .7; }
 .pgrid .nmc .pl, .pgrid .nmc .pl.lack { color: var(--tx3); font-weight: 400; }
+.rule-tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+.rule-tbl th { text-align: left; font-weight: 500; font-size: 12px; color: var(--tx2); padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.rule-tbl td { padding: 8px; border-bottom: 1px solid var(--line2); }
+
+/* 勤務表：見出し（行事・日付・不足）をまとめて固定。固定した列と見出しは不透明にして、下のマスが透けないように */
+.pgrid thead { position: sticky; top: 0; z-index: 4; }
+.pgrid thead th { position: static; background-color: var(--bg); }
+.pgrid thead th.nm { position: sticky; left: 0; z-index: 5; }
+.pgrid thead tr { background: var(--bg); }
+.pgrid thead tr:last-child th { box-shadow: inset 0 -1px 0 var(--line); }
+.pgrid tbody .nm { z-index: 3; background-color: var(--bg); background-clip: padding-box; box-shadow: inset -1px 0 0 var(--line); }
+.pgrid .pg-evrow th { height: 22px; padding-top: 2px; padding-bottom: 2px; }
+.pg-prev { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--tx2); cursor: pointer; }
+/* 名前の横の1文字のスキルの札 */
+.pgrid .b1 { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 4px; font-size: 10px; background: var(--bg3); color: var(--tx2); }
+/* 行の色分け：ユニットごと／選んだスキルを持つ人 */
+.pgrid tr.ut0 > td, .pgrid tr.ut0 > th { --rowtint: #f3f7fd; } .pgrid tr.ut1 > td, .pgrid tr.ut1 > th { --rowtint: #f3faf5; }
+.pgrid tr.ut2 > td, .pgrid tr.ut2 > th { --rowtint: #fdf8f0; } .pgrid tr.ut3 > td, .pgrid tr.ut3 > th { --rowtint: #f8f4fc; }
+.pgrid tbody tr[class^="ut"] > td.c, .pgrid tbody tr[class^="ut"] > td.nm { background-color: var(--rowtint); }
+.pgrid tr.ugrp.ut0 th { background: #e3ecfa; } .pgrid tr.ugrp.ut1 th { background: #e1f2e6; } .pgrid tr.ugrp.ut2 th { background: #f7ecd9; } .pgrid tr.ugrp.ut3 th { background: #ece3f6; }
+.pgrid tbody tr.rw-on > td.c, .pgrid tbody tr.rw-on > td.nm { background-color: #e8f0fe; }
+.pgrid tbody tr.rw-off > td.nm .link { color: var(--tx2); }
+.pgrid .skrow th { font-size: 12px; font-weight: 500; color: var(--pri-tx); }
+
+/* 名前の右：選んだスキルの札だけ（行の高さは変えない） */
+.pgrid .nmc { flex-wrap: nowrap; }
+.pgrid .nmc .bd { display: inline-flex; gap: 2px; order: 1; flex-shrink: 0; }
+.pgrid .nmc .pl { order: 2; }
+.b1 { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 4px; font-size: 10px; font-weight: 500; flex-shrink: 0; }
+.sk-medical { --sk: #c5221f; --skbg: #fde7e4; } .sk-dementia { --sk: #7b3fb4; --skbg: #f1e7fb; } .sk-bath { --sk: #1a5fc8; --skbg: #e3eefe; }
+.sk-swallow { --sk: #00796b; --skbg: #dff4f0; } .sk-terminal { --sk: #8a5a00; --skbg: #fbefdb; } .sk-driver { --sk: #3c7a3c; --skbg: #e5f3e5; }
+.b1[class*="sk-"] { color: var(--sk); background: var(--skbg); }
+.pgrid .skrow th { font-size: 12px; font-weight: 500; color: var(--sk, var(--pri-tx)); }
+.pgrid .skrow th.nm { display: table-cell; } .pgrid .skrow th.nm .b1 { margin-right: 4px; vertical-align: middle; }
+.pgrid .skrow th.skc.none { color: #fff; background: var(--bad); }
+/* 表の下の「表示」：小さな設定 */
+.legend { position: relative; }
+.pg-view { margin-left: auto; }
+.pg-gear { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 12px; color: var(--tx2); }
+.pg-gear::-webkit-details-marker { display: none; }
+.pg-gear:hover, .pg-view[open] .pg-gear { background: var(--bg3); color: var(--tx); }
+.pg-view-pop { top: auto; bottom: calc(100% + 6px); left: auto; right: 0; min-width: 240px; gap: 4px; }
+.pg-ck { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; padding: 2px 0; }
