@@ -283,3 +283,9 @@
 .pg-gear:hover, .pg-view[open] .pg-gear { background: var(--bg3); color: var(--tx); }
 .pg-view-pop { top: auto; bottom: calc(100% + 6px); left: auto; right: 0; min-width: 240px; gap: 4px; }
 .pg-ck { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; padding: 2px 0; }
+
+/* 行の色：いちばん上のスキルの色で薄く */
+.pgrid tbody tr.rt > td.c, .pgrid tbody tr.rt > td.nm { background-color: var(--skbg); }
+.pgrid tbody tr.rt > td.nm { box-shadow: inset 3px 0 0 var(--sk), inset -1px 0 0 var(--line); }
+.sk-legend { gap: 6px; flex-wrap: wrap; }
+.sk-sw { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 4px; background: var(--skbg); color: var(--sk); font-size: 11px; border-left: 3px solid var(--sk); }
