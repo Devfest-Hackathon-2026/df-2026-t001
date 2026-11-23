@@ -1,0 +1,66 @@
+{
+  "id": "u1-24",
+  "uncovered_no": 24,
+  "dataset": "ikegami-3shift",
+  "source": "池上 3Shift",
+  "title": "単発深夜の禁止（2連続深夜以上: 非N→N→非N 禁止）",
+  "category": "部品で書ける",
+  "utterance": "深夜勤は1回ぽっきりにせず、2回続けて入れて",
+  "runnable": true,
+  "rules": [
+    {
+      "id": "u1-24",
+      "type": "succession",
+      "label": "単発深夜（非N→N→非N）を禁止",
+      "strength": "強く",
+      "pattern": [
+        {
+          "ids": [
+            "E",
+            "D",
+            "O",
+            "休"
+          ]
+        },
+        {
+          "ids": [
+            "N"
+          ]
+        },
+        {
+          "ids": [
+            "E",
+            "D",
+            "O",
+            "休"
+          ]
+        }
+      ],
+      "forbid": true
+    }
+  ],
+  "verify": {
+    "kind": "forbid_patterns",
+    "patterns": [
+      [
+        [
+          "E",
+          "D",
+          "O",
+          "休"
+        ],
+        [
+          "N"
+        ],
+        [
+          "E",
+          "D",
+          "O",
+          "休"
+        ]
+      ]
+    ],
+    "use_history": false,
+    "description": "当月内で (D|E|O|休)→N→(D|E|O|休) が出現した件数を数える"
+  }
+}

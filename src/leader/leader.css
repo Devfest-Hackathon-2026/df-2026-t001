@@ -153,6 +153,9 @@ input.sw:checked { background: var(--pri); } input.sw:checked::after { transform
 .relay { display: flex; flex-direction: column; gap: 12px; }
 .rcard { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--bg); }
 .rcard.cur { border-color: var(--pri); background: #f8fbff; } .rcard.wait { background: var(--bg2); }
+/* 応諾の見込み：押すと学習の説明を開く */
+.chipbtn { border: 0; cursor: pointer; font-family: inherit; } .chipbtn:hover { filter: brightness(0.96); } .chipbtn:focus-visible { outline: 2px solid var(--pri); outline-offset: 1px; }
+.accnote { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--bg2); color: var(--tx); line-height: 1.7; } .accnote p + p { margin-top: 4px; } .accnote .link { margin-top: 4px; }
 .rank { width: 28px; height: 28px; border-radius: 50%; background: var(--bg3); display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500; flex: none; }
 .chatprev { display: flex; flex-direction: column; gap: 4px; }
 .bub { padding: 8px 12px; border-radius: 16px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; max-width: 92%; }
@@ -239,3 +242,66 @@ input.sw:checked { background: var(--pri); } input.sw:checked::after { transform
 .sbar { position: absolute; height: 20px; border-radius: 4px; font-size: 11px; line-height: 20px; padding: 0 6px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; border: 0; font-weight: 500; z-index: 3; }
 .sbar.bad { background: var(--bad); color: #fff; } .sbar.warn { background: #f9c66b; color: #5c3a00; }
 .sbar { z-index: 1; } .vshort { z-index: 1; } .g-row.short-row .g-name { z-index: 3; background: #fffafa; }
+
+/* 設定タブ・職員画面：はじめの条件の置き場所案内・K6埋め込み */
+.setup-list { display: flex; flex-direction: column; min-width: 0; border-top: 1px solid var(--line2); }
+.setup-row-wrap { border-bottom: 1px solid var(--line2); padding: 12px 0; min-width: 0; }
+.setup-row-wrap:last-child { border-bottom: 0; padding-bottom: 0; }
+.setup-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.setup-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.setup-row-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.setup-row-title { font-size: 13px; font-weight: 500; color: var(--tx2); }
+.setup-row-val { font-size: 15px; font-weight: 500; color: var(--tx); }
+.setup-row-act { flex-shrink: 0; display: flex; align-items: center; }
+.setup-embed { margin-top: 12px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); min-width: 0; max-width: 100%; }
+.setup-embed-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; padding-bottom: 12px; margin-bottom: 16px; border-bottom: 1px solid var(--line2); }
+.setup-embed-status { display: inline-flex; align-items: center; gap: 6px; }
+.setup-saved-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); display: inline-block; flex-shrink: 0; }
+.setup-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px 12px; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+.setup-banner-text { flex: 1 1 220px; min-width: 0; font-size: 13px; color: var(--tx2); }
+@media (max-width: 560px) {
+  .setup-row { flex-direction: column; align-items: stretch; gap: 8px; }
+  .setup-row-act { justify-content: flex-start; }
+  .setup-embed { padding: 12px; }
+}
+
+/* ホームの数字タイル：PCは6列1段、スマホは3列×2段。今日の勤務人数・夜勤・体調もここで見る */
+.sumgrid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+.sumtile { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; text-align: left; min-width: 0; }
+.sumtile:hover { background: var(--bg2); }
+.sumtile .st-n { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
+.sumtile .st-n b { font-size: 22px; font-weight: 500; line-height: 1.2; }
+.sumtile .st-sub { font-size: 11px; color: var(--tx2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.sumtile.bad { background: var(--bad-bg); border-color: #f3c9c5; } .sumtile.warn { background: var(--warn-bg); border-color: #ecd9a6; }
+@media (max-width: 899px) { .sumgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 599px) {
+  .sumgrid { gap: 6px; }
+  .sumtile { padding: 8px; }
+  .sumtile .st-n { flex-direction: column; gap: 0; }
+  .sumtile .st-n b { font-size: 20px; }
+  .sumtile .st-n .small { font-size: 11px; }
+  .dash-detail { display: none; }
+}
+
+/* 欠員一覧の見出しと畳むボタン／畳んだときの細い帯 */
+.vac-h { display: flex; align-items: center; gap: 8px; padding: 0 0 4px 4px; }
+.vac-h b { font-weight: 500; font-size: 15px; }
+.vac-fold { width: 36px; height: 36px; color: var(--tx2); }
+.vac-rail { flex-shrink: 0; width: 48px; align-self: flex-start; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--tx2); }
+.vac-rail:hover { background: var(--bg2); color: var(--pri-tx); }
+.vac-rail .badge { position: static; }
+.vac-rail-t { writing-mode: vertical-rl; font-size: 12px; letter-spacing: 2px; }
+@media (max-width: 899px) { .vac-rail { display: none; } }
+
+/* 主ボタンの横の「ほかの対応 ▾」 */
+.more-menu { position: relative; }
+.more-menu > summary { list-style: none; cursor: pointer; gap: 4px; }
+.more-menu > summary::-webkit-details-marker { display: none; }
+.more-pop { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; display: flex; flex-direction: column; gap: 6px; padding: 8px; min-width: 240px; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 4px 16px rgba(60,64,67,.18); }
+.more-pop .btn { justify-content: flex-start; }
+.more-pop .btn { white-space: nowrap; }
+
+/* 欠員：任せる前の判断材料 */
+.vfacts { list-style: none; margin: 10px 0 0; padding: 10px 12px; display: flex; flex-wrap: wrap; gap: 4px 16px; background: var(--bg2); border-radius: 10px; font-size: 14px; }
+.vfacts li { white-space: nowrap; }
+@media (min-width: 900px) { .toast { left: auto; right: 24px; bottom: 24px; transform: none; } }

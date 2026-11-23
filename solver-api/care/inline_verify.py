@@ -14,9 +14,10 @@
 from __future__ import annotations
 
 import calendar
+from collections.abc import Sequence
 from datetime import date as Date
 
-from .dsl import OFF, WORK_SHIFTS, Count, Facility, Month, StaffMember, Succession
+from .dsl import OFF, WORK_SHIFTS, Count, Facility, Month, ShiftType, StaffMember, Succession
 from .inline_solve import APP_MAX_NIGHTS, APP_MAX_RUN, APP_MIN_OFF, InlineSolveIn, InlineStaff, build
 from .verify import verify_monthly
 
@@ -41,32 +42,33 @@ def month_of(day: str, month_days: int | None = None, first_weekday: int | None 
 CODES = {"", OFF, *WORK_SHIFTS}
 
 
-def check_cells(cells: dict[str, list[str]], day: str) -> None:
+def check_cells(cells: dict[str, list[str]], day: str, shift_types: Sequence[ShiftType] | None = None) -> None:
     """画面が送った cells の形を確かめる（リクエストの検証で呼ぶ。合わなければ 422）。"""
     d = Date.fromisoformat(day)
     n = calendar.monthrange(d.year, d.month)[1]
+    allowed = {"", OFF, *([st.id for st in shift_types] if shift_types else WORK_SHIFTS)}
     for sid, row in cells.items():
         if not 1 <= len(sid) <= 40:
             raise ValueError("cells の staff_id が不正です")
         if len(row) != n:
             raise ValueError(f"cells[{sid}] は {n} 日分が必要です（{len(row)} 日分）")
-        bad = sorted({k for k in row if k not in CODES})
+        bad = sorted({k for k in row if k not in allowed})
         if bad:
             raise ValueError(f"cells[{sid}] の勤務区分が不正です: {bad[:3]}")
 
 
-def _cov(row: list[str], carry: str | None) -> list[int]:
-    """画面（labor.ts）の数え方: 勤務の日と夜勤明けの日を 1。"""
+def _cov(row: list[str], carry: str | None, work_set: set[str], ake_set: set[str]) -> list[int]:
+    """画面（labor.ts）の数え方: 勤務の日と明け対象勤務の翌日を 1。"""
     out = []
     for i, k in enumerate(row):
         prev = row[i - 1] if i else (carry or "")
-        out.append(1 if (k in WORK_SHIFTS or prev == "夜勤") else 0)
+        out.append(1 if (k in work_set or prev in ake_set) else 0)
     return out
 
 
-def _app_labor(row: list[str], carry: str | None, s: StaffMember) -> dict[str, int]:
+def _app_labor(row: list[str], carry: str | None, s: StaffMember, work_set: set[str], ake_set: set[str]) -> dict[str, int]:
     """inline_solve._app_labor と同じ硬制約の破れ数（連勤の窓の数・公休の不足）。"""
-    c = _cov(row, carry)
+    c = _cov(row, carry, work_set, ake_set)
     N = len(row)
     out: dict[str, int] = {}
     run = sum(1 for i in range(N - APP_MAX_RUN) if sum(c[i:i + APP_MAX_RUN + 1]) > APP_MAX_RUN)
@@ -82,12 +84,28 @@ def _app_labor(row: list[str], carry: str | None, s: StaffMember) -> dict[str, i
 class RowChecker:
     """inline_solve と同じルールで、1人の行の破れを数える。候補ごとに作り直さず使い回す。"""
 
-    def __init__(self, mo: Month, staff: list[InlineStaff], night_max: int | None = None):
+    def __init__(
+        self,
+        mo: Month,
+        staff: list[InlineStaff],
+        night_max: int | None = None,
+        shift_types: Sequence[ShiftType] | None = None,
+    ):
         self.mo = mo
-        # ルールの組み立ては inline_solve.build そのもの（人数の基準は 0 にして、人ごとのルールだけを残す）
-        b = InlineSolveIn(month=mo.month, staff=staff[:1], need_per_shift={k: 0 for k in WORK_SHIFTS}, night_max=night_max)
-        _, _, rules, _ = build(b)
-        self.staff = {s.staff_id: StaffMember(name=s.staff_id, **s.model_dump()) for s in staff}
+        self.shift_types = list(shift_types) if shift_types else []
+        work_ids = tuple(st.id for st in self.shift_types) if self.shift_types else WORK_SHIFTS
+        # ルールの組み立ては inline_solve.build そのもの（人数のルールは除き、人ごとのルールだけを残す）
+        b = InlineSolveIn(
+            month=mo.month,
+            staff=staff[:1],
+            shift_types=self.shift_types,
+            need_per_shift={k: 0 for k in work_ids},
+            night_max=night_max,
+        )
+        fac0, _, rules, _ = build(b, include_staffing=False)
+        self.work_set = set(fac0.work_shift_ids())
+        self.ake_set = set(fac0.ake_shift_ids())
+        self.staff = {s.staff_id: StaffMember(name=s.staff_id, **s.model_dump(exclude={"limits"})) for s in staff}
         # 人ごとの行だけで決まる絶対ルール。r-run は夜勤明けも数える画面の数え方（_app_labor）で置き換える
         self.rules = [r for r in rules if r.strength == "絶対" and isinstance(r, (Succession, Count)) and r.id != "r-run"]
         self.labels = {r.id: r.label for r in self.rules}
@@ -96,9 +114,9 @@ class RowChecker:
 
     def broken(self, sid: str, row: list[str], carry: str | None) -> dict[str, int]:
         s = self.staff[sid]
-        fac = Facility(facility_id="inline", name="inline", staff=[s])
+        fac = Facility(facility_id="inline", name="inline", staff=[s], shift_types=self.shift_types)
         out = verify_monthly(fac, self.mo, {sid: row}, self.rules, {sid: carry} if carry else None)
-        for k, n in _app_labor(row, carry, s).items():
+        for k, n in _app_labor(row, carry, s, self.work_set, self.ake_set).items():
             out[k] = out.get(k, 0) + n
         return out
 
@@ -129,18 +147,21 @@ def normalize(cells: dict[str, list[str]], ids: list[str], days: int) -> dict[st
 
 
 def exclude_hard(day: str, shift: str, cands: list, cells: dict[str, list[str]], carry_in: dict[str, str] | None = None,
-                 month_days: int | None = None, first_weekday: int | None = None, night_max: int | None = None):
+                 month_days: int | None = None, first_weekday: int | None = None, night_max: int | None = None,
+                 shift_types: Sequence[ShiftType] | None = None):
     """cands（inline_rank.StaffIn）のうち、引き受けると絶対ルールを破る人を外す。
 
     戻り値: (残す人, [{staff_id, reason, rule_id}])。月の日数・曜日が暦と合わないときは何も外さない。"""
     mo = month_of(day, month_days, first_weekday)
     if mo is None or not cands:
         return list(cands), []
+    work_ids = tuple(st.id for st in shift_types) if shift_types else WORK_SHIFTS
+    work_set = set(work_ids)
     staff = [InlineStaff(staff_id=s.id, role=(s.role or "介護職員")[:20], employment=s.employment, years=int(s.years), skills=list(s.skills),
-                         shifts=[k for k in (s.shifts or WORK_SHIFTS) if k in WORK_SHIFTS]) for s in cands]
-    chk = RowChecker(mo, staff, night_max)
+                         shifts=[k for k in (s.shifts or work_ids) if k in work_set]) for s in cands]
+    chk = RowChecker(mo, staff, night_max, shift_types=shift_types)
     rows = normalize(cells, [s.id for s in cands], mo.days)
-    carry = {k: v for k, v in (carry_in or {}).items() if v in WORK_SHIFTS}
+    carry = {k: v for k, v in (carry_in or {}).items() if v in work_set}
     d = int(day[8:10])
     kept, out = [], []
     for s in cands:

@@ -21,6 +21,10 @@
       {
         "source": "/employee",
         "destination": "/employee.html"
+      },
+      {
+        "source": "/setup",
+        "destination": "/setup.html"
       }
     ],
     "headers": [

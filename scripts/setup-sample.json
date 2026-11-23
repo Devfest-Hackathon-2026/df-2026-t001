@@ -1,0 +1,65 @@
+{
+  "facility": {
+    "name": "ひだまりの郷",
+    "kind": "特別養護老人ホーム",
+    "units": [
+      { "id": "u1", "name": "ひなた", "floor": 1 },
+      { "id": "u2", "name": "そよかぜ", "floor": 2 }
+    ]
+  },
+  "shifts": [
+    { "id": "早番", "name": "早番", "enabled": true, "startTime": "07:00", "endTime": "16:00" },
+    { "id": "日勤", "name": "日勤", "enabled": true, "startTime": "08:30", "endTime": "17:30" },
+    { "id": "遅番", "name": "遅番", "enabled": true, "startTime": "11:00", "endTime": "20:00" },
+    { "id": "夜勤", "name": "夜勤", "enabled": true, "startTime": "16:30", "endTime": "09:30" }
+  ],
+  "needPerShift": {
+    "早番": 2,
+    "日勤": 2,
+    "遅番": 2,
+    "夜勤": 2
+  },
+  "staff": [
+    { "id": "S001", "name": "佐藤 健一", "role": "主任", "employment": "常勤", "shifts": ["早番", "日勤", "遅番"], "canMedicalCare": true, "homeUnit": "ひなた", "leaveBy": "", "unavailableDaysOfWeek": [0, 6] },
+    { "id": "S002", "name": "鈴木 美咲", "role": "介護福祉士", "employment": "常勤", "shifts": ["早番", "日勤", "遅番", "夜勤"], "canMedicalCare": true, "homeUnit": "ひなた", "leaveBy": "", "unavailableDaysOfWeek": [] },
+    { "id": "S003", "name": "高橋 翔太", "role": "介護職員", "employment": "常勤", "shifts": ["早番", "日勤", "遅番", "夜勤"], "canMedicalCare": false, "homeUnit": "ひなた", "leaveBy": "", "unavailableDaysOfWeek": [] },
+    { "id": "S004", "name": "田中 陽子", "role": "介護福祉士", "employment": "常勤", "shifts": ["早番", "日勤", "遅番", "夜勤"], "canMedicalCare": true, "homeUnit": "ひなた", "leaveBy": "", "unavailableDaysOfWeek": [] },
+    { "id": "S005", "name": "渡辺 徹", "role": "介護職員", "employment": "常勤", "shifts": ["早番", "日勤", "遅番", "夜勤"], "canMedicalCare": false, "homeUnit": "ひなた", "leaveBy": "", "unavailableDaysOfWeek": [] },
+    { "id": "S006", "name": "伊藤 舞", "role": "介護職員", "employment": "常勤", "shifts": ["早番", "日勤", "遅番", "夜勤"], "canMedicalCare": false, "homeUnit": "ひなた", "leaveBy": "", "unavailableDaysOfWeek": [] },
+    { "id": "S007", "name": "山本 大樹", "role": "介護福祉士", "employment": "常勤", "shifts": ["早番", "日勤", "遅番", "夜勤"], "canMedicalCare": true, "homeUnit": "そよかぜ", "leaveBy": "", "unavailableDaysOfWeek": [] },
+    { "id": "S008", "name": "中村 結衣", "role": "介護職員", "employment": "常勤", "shifts": ["早番", "日勤", "遅番", "夜勤"], "canMedicalCare": false, "homeUnit": "そよかぜ", "leaveBy": "", "unavailableDaysOfWeek": [] },
+    { "id": "S009", "name": "小林 悠斗", "role": "介護職員", "employment": "常勤", "shifts": ["早番", "日勤", "遅番", "夜勤"], "canMedicalCare": false, "homeUnit": "そよかぜ", "leaveBy": "", "unavailableDaysOfWeek": [] },
+    { "id": "S010", "name": "加藤 恵", "role": "介護福祉士", "employment": "常勤", "shifts": ["早番", "日勤", "遅番", "夜勤"], "canMedicalCare": true, "homeUnit": "そよかぜ", "leaveBy": "", "unavailableDaysOfWeek": [] },
+    { "id": "S011", "name": "吉田 陸", "role": "介護職員", "employment": "常勤", "shifts": ["早番", "日勤", "遅番", "夜勤"], "canMedicalCare": false, "homeUnit": "そよかぜ", "leaveBy": "", "unavailableDaysOfWeek": [] },
+    { "id": "S012", "name": "山田 咲", "role": "介護職員", "employment": "常勤", "shifts": ["早番", "日勤", "遅番", "夜勤"], "canMedicalCare": false, "homeUnit": "そよかぜ", "leaveBy": "", "unavailableDaysOfWeek": [] },
+    { "id": "S013", "name": "佐々木 優", "role": "介護福祉士", "employment": "常勤", "shifts": ["早番", "日勤", "遅番", "夜勤"], "canMedicalCare": true, "homeUnit": "ひなた", "leaveBy": "", "unavailableDaysOfWeek": [] },
+    { "id": "S014", "name": "山口 翼", "role": "介護職員", "employment": "常勤", "shifts": ["早番", "日勤", "遅番", "夜勤"], "canMedicalCare": false, "homeUnit": "ひなた", "leaveBy": "", "unavailableDaysOfWeek": [] },
+    { "id": "S015", "name": "斎藤 さくら", "role": "介護福祉士", "employment": "常勤", "shifts": ["早番", "日勤", "遅番", "夜勤"], "canMedicalCare": true, "homeUnit": "そよかぜ", "leaveBy": "", "unavailableDaysOfWeek": [] },
+    { "id": "S016", "name": "清水 蓮", "role": "介護職員", "employment": "常勤", "shifts": ["早番", "日勤", "遅番", "夜勤"], "canMedicalCare": false, "homeUnit": "そよかぜ", "leaveBy": "", "unavailableDaysOfWeek": [] },
+    { "id": "S017", "name": "松本 孝", "role": "介護職員", "employment": "パート", "shifts": ["早番"], "canMedicalCare": false, "homeUnit": "ひなた", "leaveBy": "16:00", "unavailableDaysOfWeek": [0, 6] },
+    { "id": "S018", "name": "井上 愛", "role": "介護職員", "employment": "パート", "shifts": ["早番", "日勤"], "canMedicalCare": false, "homeUnit": "ひなた", "leaveBy": "", "unavailableDaysOfWeek": [2, 4] },
+    { "id": "S019", "name": "木村 拓也", "role": "介護職員", "employment": "パート", "shifts": ["遅番"], "canMedicalCare": false, "homeUnit": "そよかぜ", "leaveBy": "", "unavailableDaysOfWeek": [1, 3] },
+    { "id": "S020", "name": "林 涼子", "role": "介護職員", "employment": "パート", "shifts": ["早番", "日勤"], "canMedicalCare": false, "homeUnit": "そよかぜ", "leaveBy": "17:00", "unavailableDaysOfWeek": [0, 6] }
+  ],
+  "rules": {
+    "nightMax": 8
+  },
+  "carryIn": {
+    "S001": "休",
+    "S002": "日勤",
+    "S003": "休",
+    "S004": "夜勤",
+    "S005": "休",
+    "S006": "早番",
+    "S007": "休",
+    "S008": "遅番",
+    "S009": "休",
+    "S010": "日勤",
+    "S011": "休",
+    "S012": "早番",
+    "S013": "休",
+    "S014": "日勤",
+    "S015": "休",
+    "S016": "休"
+  }
+}

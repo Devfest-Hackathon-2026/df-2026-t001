@@ -24,7 +24,7 @@ export function Day({ s, date, go, openStaff, openResident }: { s: State; date: 
   const inScope = (r: DayRow) => scope === 'all' || (scope[0] === 'F' ? floorOf(r.assignment.unitId) === +scope.slice(1) : r.assignment.unitId === scope);
   const [step, setStep] = useState(30);
   // アコーディオンの開閉（この画面を開いている間は覚えておく）
-  const [closed, setClosed] = useState<Record<string, boolean>>(() => { try { return JSON.parse(sessionStorage.getItem('leader-day-closed') ?? '{}'); } catch { return {}; } });
+  const [closed, setClosed] = useState<Record<string, boolean>>(() => { try { return JSON.parse(sessionStorage.getItem('leader-day-closed') ?? '{"head":true}'); } catch { return { head: true }; } });
   const setClosedAll = (v: Record<string, boolean>) => { setClosed(v); try { sessionStorage.setItem('leader-day-closed', JSON.stringify(v)); } catch { /* 保存できなくても動く */ } };
   const toggle = (k: string) => setClosedAll({ ...closed, [k]: !closed[k] });
   const [sel, setSel] = useState<{ row: DayRow; b: TaskBlock } | null>(null);
@@ -32,10 +32,10 @@ export function Day({ s, date, go, openStaff, openResident }: { s: State; date: 
   const colW = COLW[step]; const cols = Math.ceil((B - A) / step); const W = cols * colW;
   const px = (m: number) => ((m - A) / step) * colW;
   const gridRef = useRef<HTMLDivElement>(null);
-  // 開いたとき／日付・範囲・刻みを変えたとき：朝6時（今日は現在時刻の1時間前）が左端に来るようにする
+  // 開いたとき／日付・範囲・刻みを変えたとき：朝7時（早番の始まり）が左端に来るようにする
   useEffect(() => {
     const el = gridRef.current; if (!el) return;
-    const target = date === stampDay(s.now) ? Math.max(360, stampMin(s.now) - 60) : 360;
+    const target = 420;
     el.scrollLeft = Math.max(0, ((target - A) / step) * colW);
   }, [date, preset, step]);
   const rows = useMemo(() => buildDay(s.assignments, date), [s.assignments, date]);
@@ -74,8 +74,15 @@ export function Day({ s, date, go, openStaff, openResident }: { s: State; date: 
         <div class="row wrap" style="gap:8px">
           <select class="input scope" value={scope} onChange={(e) => setScope((e.target as HTMLSelectElement).value)} aria-label="表示する範囲（フロア・ユニット）">{SCOPES.map((x) => <option key={x.v} value={x.v}>{x.v === 'all' || x.v[0] === 'F' ? x.l : `ユニット：${x.l}`}</option>)}</select>
           <div class="seg" aria-label="表示範囲">{(Object.keys(PRESETS) as (keyof typeof PRESETS)[]).map((k) => <button key={k} aria-pressed={preset === k} onClick={() => setPreset(k)}>{PRESETS[k].label}</button>)}</div>
-          <div class="seg" aria-label="表示刻み">{[15, 30, 60].map((n) => <button key={n} aria-pressed={step === n} onClick={() => setStep(n)}>{n}分</button>)}</div>
-          <div class="seg" aria-label="表の開閉"><button onClick={() => setClosedAll({})}>すべて開く</button><button onClick={() => setClosedAll(Object.fromEntries(['head', 'tail', ...SHIFT_KEYS].map((k) => [k, true])))}>すべて閉じる</button></div>
+          <details class="more-menu">
+            <summary class="btn sm">表示 <Icon n="expand_more" sm /></summary>
+            <div class="more-pop" style="right:0;left:auto">
+              <span class="small">時間の刻み</span>
+              <div class="seg" aria-label="表示刻み">{[15, 30, 60].map((n) => <button key={n} aria-pressed={step === n} onClick={() => setStep(n)}>{n}分</button>)}</div>
+              <button class="btn sm" onClick={() => setClosedAll({})}>すべて開く</button>
+              <button class="btn sm" onClick={() => setClosedAll(Object.fromEntries(['head', 'tail', ...SHIFT_KEYS].map((k) => [k, true])))}>すべて閉じる</button>
+            </div>
+          </details>
         </div>
       </div>
       {(holidayOf(date) || dayEvents.length > 0) && <div class="day-banner">
@@ -84,9 +91,8 @@ export function Day({ s, date, go, openStaff, openResident }: { s: State; date: 
       </div>}
       <div class={`short-sum ${scIssues.length ? (nSkill ? 'bad' : 'warn') : 'ok'}`} role="status">
         <Icon n={scIssues.length ? 'warning' : 'check_circle'} sm />
-        {scIssues.length ? <><b>この日の不足 {scRaw.length}件</b>{nSkill > 0 && <span class="chip bad">スキル不足 {nSkill}</span>}{nHead > 0 && <span class="chip warn">人数不足 {nHead}</span>}
-          <span class="small">表の赤・橙の帯が不足している時間帯です。押すとその時刻へ移動します</span>
-          <span class="short-jumps">{scIssues.slice(0, 6).map((i, k) => <button key={k} class={`btn sm ${i.kind === 'skill' ? 'sj-bad' : 'sj-warn'}`} onClick={() => jump(i.t0)}>{issueTime(i)} {shortLabel(i)}</button>)}{scIssues.length > 6 && <span class="small">ほか{scIssues.length - 6}件（下の「配置の検証」）</span>}</span></>
+        {scIssues.length ? <><b>足りない時間 {scRaw.length}件</b>{nSkill > 0 && <span class="chip bad">スキル不足 {nSkill}</span>}{nHead > 0 && <span class="chip warn">人数不足 {nHead}</span>}
+          <span class="short-jumps">{scIssues.slice(0, 6).map((i, k) => <button key={k} class={`btn sm ${i.kind === 'skill' ? 'sj-bad' : 'sj-warn'}`} onClick={() => jump(i.t0)}>{issueTime(i)} {shortLabel(i)}</button>)}{scIssues.length > 6 && <span class="small">ほか{scIssues.length - 6}件（下の「人数とスキルのチェック」）</span>}</span></>
           : <span>この範囲では、人数・スキルの不足はありません</span>}
       </div>
       <div class="grid-wrap scroll" ref={gridRef}>
@@ -95,13 +101,13 @@ export function Day({ s, date, go, openStaff, openResident }: { s: State; date: 
             <div class="track head" style={trackStyle}>{hours.map((t) => <span key={t} class="hl" style={`left:${px(t)}px`}>{t >= 1440 ? '翌' : ''}{fmtHM(t)}</span>)}
               {scIssues.map((i, k) => <span key={k} class={`hd-short ${i.kind === 'skill' ? 'bad' : 'warn'}`} style={`left:${px(Math.max(i.t0, A))}px;width:${px(Math.min(i.t1, B)) - px(Math.max(i.t0, A))}px`} />)}</div></div>
           {placed.length > 0 && <div class="g-row short-row" style={`height:${8 + lanes.length * 24}px`}>
-            <div class="g-name" style={`width:${NAMEW}px`}><span class="small" style="color:var(--bad);font-weight:500">不足の時間帯</span><span class="small">赤＝スキル　橙＝人数</span></div>
+            <div class="g-name" style={`width:${NAMEW}px`}><span class="small" style="color:var(--bad);font-weight:500">足りない時間</span></div>
             <div class="track" style={trackStyle}>{placed.map(({ i, lane }, k) => { const l = px(Math.max(i.t0, A)); const w = px(Math.min(i.t1, B)) - l;
               return <button key={k} class={`sbar ${i.kind === 'skill' ? 'bad' : 'warn'}`} style={`left:${l}px;width:${Math.max(6, w - 2)}px;top:${4 + lane * 24}px`} title={`${i.kind === "skill" ? "スキル不足" : "人数不足"} ${issueTime(i)} ${i.scopes.join("・")}（必要${i.need}／現在${i.have}）`} onClick={() => jump(i.t0)}>{w > 70 ? `${i.kind === 'skill' ? 'スキル' : '人数'}：${shortLabel(i)}` : ''}</button>; })}</div>
           </div>}
           {scIssues.map((i, k) => { const l = px(Math.max(i.t0, A)); const w = px(Math.min(i.t1, B)) - l; return <span key={'v' + k} class={`vshort ${i.kind === 'skill' ? 'bad' : 'warn'}`} aria-hidden="true" style={`left:${NAMEW + l}px;width:${w}px`} />; })}
 
-          <button class="g-grp acc" aria-expanded={!closed.head} onClick={() => toggle('head')}><span class="acc-in"><Icon n={closed.head ? 'chevron_right' : 'expand_more'} sm /> 対応人数（休憩・仮眠を除く。赤は不足）</span></button>
+          <button class="g-grp acc" aria-expanded={!closed.head} onClick={() => toggle('head')}><span class="acc-in"><Icon n={closed.head ? 'chevron_right' : 'expand_more'} sm /> ユニットごとの人数</span></button>
           {!closed.head && [...UNITS.filter((u) => scope === 'all' || (scope[0] === 'F' ? u.floor === +scope.slice(1) : u.id === scope)).map((u) => ({ id: u.id, name: `${u.name}（${u.floor}階）`, day: true as const, fn: (r: DayRow) => r.assignment.unitId === u.id })), ...[1, 2].filter((f) => scope === 'all' || (scope[0] === 'F' ? f === +scope.slice(1) : f === floorOf(scope))).map((f) => ({ id: `F${f}`, name: `${f}階 夜間`, day: false as const, fn: (r: DayRow) => floorOf(r.assignment.unitId) === f }))].map((u) => (
             <div class="g-row strip" key={u.id}><div class="g-name" style={`width:${NAMEW}px`}><span class="small" style="color:var(--tx)">{u.name}</span></div>
               <div class="track" style={`width:${W}px`}>
@@ -132,7 +138,7 @@ export function Day({ s, date, go, openStaff, openResident }: { s: State; date: 
       </div>
       <div class="split2">
         <section class="card">
-          <h3>配置の検証</h3>
+          <h3>人数とスキルのチェック</h3>
           {issues.length === 0 && <p class="muted" style="margin-top:8px">必要人数・休憩・医療的ケアの検証で問題ありません。</p>}
           <ul class="issues" style="margin-top:8px">{issues.map((i, k) => <li key={k}><span class={`chip ${i.kind === 'skill' ? 'bad' : 'warn'}`}>{i.kind === 'skill' ? 'スキル不足' : '人数不足'}</span> <b style="font-weight:500">{issueTime(i)}</b> {i.text}（必要{i.need}／現在{i.have}）</li>)}</ul>
           {issues.length > 0 && <div class="fix"><span class="small">修正案：</span>{vacs.length ? vacs.map((v) => <button key={v.id} class="btn sm tonal" onClick={() => go('vac', { vacId: v.id })}>{v.id} の候補を見る</button>) : <span class="muted">休憩時刻の入れ替えや他ユニットからのフォローを検討してください。</span>}</div>}

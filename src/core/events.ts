@@ -1,5 +1,8 @@
 import type { ShiftCode } from './types';
 import { SHIFT_ORDER } from './facility';
+import { HOLIDAYS } from './holidays';
+
+export { HOLIDAYS };
 
 export type EventKind = '行事' | '訓練' | '研修' | '面会' | '誕生会' | 'その他';
 export interface FacilityEvent {
@@ -7,7 +10,6 @@ export interface FacilityEvent {
   /** 必要人数への影響：この勤務帯に extra 名の追加が必要。allStaff=true は、その勤務帯の職員は全員参加（人数の追加はなし） */
   effect?: { shifts: ShiftCode[]; extra: number; allStaff?: boolean };
 }
-export const HOLIDAYS: Record<string, string> = { '2026-10-12': 'スポーツの日', '2026-11-03': '文化の日', '2026-11-23': '勤労感謝の日' };
 export const holidayOf = (date: string) => HOLIDAYS[date];
 
 export const SEED_EVENTS: FacilityEvent[] = [

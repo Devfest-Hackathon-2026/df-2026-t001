@@ -1,0 +1,171 @@
+# U5 台本のある会話（bench/ux_loop.py）。場面は artifacts/ux/uncovered.md（U0）の一覧から選ぶ。
+# 1手（turn）: say=師長の言葉、draft=偽物の LLM が返す下書き（本物の LLM では使わない）、expect=AI の答えの期待、
+#   choose=何番目の候補を足すか（null なら足さない）。
+# check: rule_kept=最後に足したルールがすべて守られるか、changed_ratio_max=変わったセル ≤ 倍率 × 足す前の破れ（§2 の目安 5倍）、
+#   explain_mentions_rule=作れなかったときの説明に足したルールの名前が出るか、made=作れるか。
+# 2026-11-21 作成。結果に合わせて expect・check を変えない（変えたくなったら止めて理由を言う）。
+
+# ---------------------------------------------------------------- 部品で書ける：同じ条件を3通りの言い方で（U0 No.06）
+- id: ikegami2-night-rest-clear
+  data: ikegami-2shift
+  source: 池上 2Shift No.06（はっきりした言い方）
+  kind: 書ける
+  turns:
+    - say: "夜勤の翌々日まで勤務を入れないで（夜勤明けの次も休みにして）"
+      draft: {type: succession, pattern: [["夜勤"], ["休"], ["早番", "夜勤"]]}
+      expect: {kind: candidates, rule_type: succession, pattern_len: 3}
+      choose: 0
+  check: {rule_kept: true, changed_ratio_max: 5}
+
+- id: ikegami2-night-rest-vague
+  data: ikegami-2shift
+  source: 池上 2Shift No.06（曖昧な言い方）
+  kind: 書ける
+  turns:
+    - say: "夜勤明けの次の日もゆっくり休ませてあげて"
+      draft: {type: succession, pattern: [["夜勤"], ["休"], ["早番", "夜勤"]]}
+      expect: {kind: candidates, rule_type: succession, pattern_len: 3}
+      choose: 0
+  check: {rule_kept: true, changed_ratio_max: 5}
+
+- id: ikegami2-night-rest-slang
+  data: ikegami-2shift
+  source: 池上 2Shift No.06（現場の略語）
+  kind: 書ける
+  turns:
+    - say: "入り明け休の次はすぐ出勤NGで"
+      draft: {type: succession, pattern: [["夜勤"], ["休"], ["早番", "夜勤"]]}
+      expect: {kind: candidates, rule_type: succession, pattern_len: 3}
+      choose: 0
+  check: {rule_kept: true, changed_ratio_max: 5}
+
+# ---------------------------------------------------------------- 1つの会話で2本続けて足す（No.08 → No.07）
+- id: ikegami2-two-rules
+  data: ikegami-2shift
+  source: 池上 2Shift No.08・No.07
+  kind: 2本続けて
+  turns:
+    - say: "6日以上の連休は作らないで"
+      draft: {type: succession, pattern: [["休"], ["休"], ["休"], ["休"], ["休"], ["休"]]}
+      expect: {kind: candidates, rule_type: succession, pattern_len: 6}
+      choose: 0
+    - say: "早番を4日続けて入れないで"
+      draft: {type: succession, pattern: [["早番"], ["早番"], ["早番"], ["早番"]]}
+      expect: {kind: candidates, rule_type: succession, pattern_len: 4}
+      choose: 0
+  check: {rule_kept: true, changed_ratio_max: 5}
+
+# ---------------------------------------------------------------- Q5 の部品（並びの回数・日を選べる平準化）
+- id: ikegami2-weekend-max2
+  data: ikegami-2shift
+  source: 池上 2Shift No.17
+  kind: 書ける（Q5）
+  turns:
+    - say: "週末の連休は月に2回までにして"
+      draft: {type: occurrence, pattern: [["公休"], ["公休"]], start_weekdays: [6], at_most: 2}
+      expect: {kind: candidates, rule_type: occurrence, at_most: 2}
+      choose: 0
+  check: {rule_kept: true, changed_ratio_max: 5}
+
+- id: ikegami2-jna09-weekend
+  data: ikegami-2shift
+  source: 看護協会⑨ No.52
+  kind: 書ける（Q5）
+  turns:
+    - say: "月1回は土日とも休みにして"
+      draft: {type: occurrence, pattern: [["公休"], ["公休"]], start_weekdays: [6], at_least: 1}
+      expect: {kind: candidates, rule_type: occurrence, start_weekdays: [6], at_least: 1}
+      choose: 0
+  check: {rule_kept: true, changed_ratio_max: 5}
+
+- id: ikegami3-single-night
+  data: ikegami-3shift
+  source: 池上 3Shift No.24
+  kind: 書ける
+  turns:
+    - say: "夜勤（N）は1回ぽっきりにせず、2回続けて入れて"
+      draft: {type: succession, pattern: [["E", "D", "O", "休"], ["N"], ["E", "D", "O", "休"]]}
+      expect: {kind: candidates, rule_type: succession, pattern_len: 3}
+      choose: 0
+  check: {rule_kept: true, changed_ratio_max: 5}
+
+# 数を言わずに頼む → 聞き返し → 言い直して足す（No.39）
+- id: taiwan-holiday-balance
+  data: taiwan-60
+  source: 台湾 60人 No.39
+  kind: 聞き返し→言い直し
+  turns:
+    - say: "土日の休み日数が人によって偏らないように揃えて"
+      draft: {type: balance, shift_ids: ["公休"], weekdays: [0, 6]}
+      expect: {kind: ask}
+      choose: null
+    - say: "土日の休み日数の差は1日以内にして"
+      draft: {type: balance, shift_ids: ["公休"], weekdays: [0, 6], max_spread: 1}
+      expect: {kind: candidates, rule_type: balance, max_spread: 1, weekdays: [0, 6]}
+      choose: 0
+  check: {rule_kept: true, changed_ratio_max: 5}
+
+- id: taiwan-admin-weekend
+  data: taiwan-60
+  source: 台湾 60人 No.37
+  kind: 書ける
+  turns:
+    - say: "土日は管理勤務（A）の主任をできれば1人入れて"
+      draft: {type: staffing, shift_ids: ["A"], roles: ["主任"], weekdays: [0, 6], at_least: 1, strength_hint: "できれば"}
+      expect: {kind: candidates, rule_type: staffing, at_least: 1, strength: "できれば"}
+      choose: 0
+  check: {changed_ratio_max: 5}
+
+# ---------------------------------------------------------------- 書けない（「書けません」を返し、近い型で近似しない）
+- id: ikegami2-unsup-nap
+  data: ikegami-2shift
+  source: 看護協会⑦ No.53
+  kind: 書けない
+  turns:
+    - say: "夜勤中に連続で2時間仮眠が取れるように回して"
+      draft: {type: unsupported, unsupported_kind: intra_shift}
+      expect: {kind: unsupported, unsupported_kind: intra_shift}
+      choose: null
+
+- id: taiwan-unsup-same
+  data: taiwan-60
+  source: 愛知 No.61
+  kind: 書けない
+  turns:
+    - say: "新人のP45さんと指導者のP12さんは同じ日の同じ勤務に入れて"
+      draft: {type: unsupported, unsupported_kind: pair_same}
+      expect: {kind: unsupported, unsupported_kind: pair_same}
+      choose: null
+
+# ---------------------------------------------------------------- 入力欄で入る（欄を案内する）
+- id: ikegami3-setting-interval
+  data: ikegami-3shift
+  source: 愛知 No.55
+  kind: 入力欄
+  turns:
+    - say: "勤務と勤務の間は12時間以上空けて"
+      draft: {type: setting, setting_field: min_interval_h}
+      expect: {kind: setting, setting_field: min_interval_h}
+      choose: null
+
+- id: ikegami2-setting-maxrun
+  data: ikegami-2shift
+  source: 看護協会⑤ No.46
+  kind: 入力欄
+  turns:
+    - say: "連続勤務は5日までにして"
+      draft: {type: setting, setting_field: max_run}
+      expect: {kind: setting, setting_field: max_run}
+      choose: null
+
+# ---------------------------------------------------------------- 足すと作れなくなる（説明に、チャットで足したルールの名前が出る）
+- id: ikegami2-infeasible
+  data: ikegami-2shift
+  source: 作れなくなる場面（No.11 の極端な値）
+  kind: 作れなくなる
+  turns:
+    - say: "休みは絶対に月20日以上にして"
+      draft: {type: count, shift_ids: ["休"], at_least: 20, strength_hint: "絶対"}
+      expect: {kind: candidates, rule_type: count, at_least: 20, strength: "絶対"}
+      choose: 0
+  check: {explain_mentions_rule: true}

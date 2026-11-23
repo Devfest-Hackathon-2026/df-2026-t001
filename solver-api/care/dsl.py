@@ -3,11 +3,12 @@
 Gemini も画面も施設設定も、この型を通らずにソルバーへ届かない。
 型を増やすと保存形式と画面とソルバーが全部動くので、増やす前に既存の型の組み合わせで表せないか見る。
 
-  staffing  勤務区分 × 人群 × 日付群 ごとの必要人数
-  request   人群 × 日付群 × 勤務区分群 の希望・回避（希望休は「休」を希望）
-  succession 勤務の連なりの禁止、連続勤務の上限
-  count     人ごとの勤務数・時間数の上下限
-  balance   人群の間の勤務数の偏り（最大 − 最小）の上限
+  staffing    勤務区分 × 人群 × 日付群 ごとの必要人数
+  request     人群 × 日付群 × 勤務区分群 の希望・回避（希望休は「休」を希望）
+  succession  勤務の連なりの禁止、連続勤務の上限
+  count       人ごとの勤務数・時間数の上下限・目標
+  balance     人群・日付群ごとの勤務数の偏り（最大 − 最小）の上限
+  occurrence  人ごとの、月内で完結する勤務並びの出現回数（開始日 × 並び × 上下限）
 
 日次（時間帯別の業務割当）は `TaskRequest` 1型だけを持つ。日課テンプレート自体はルールではなくデータ。
 
@@ -16,20 +17,127 @@ Gemini も画面も施設設定も、この型を通らずにソルバーへ届�
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import date
+import re
 from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Field, model_validator
 
 OFF = "休"
+PUBLIC_OFF = "公休"
 WORK_SHIFTS = ("早番", "日勤", "遅番", "夜勤")
 ALL_KINDS = (*WORK_SHIFTS, OFF)
+RESERVED_SHIFT_IDS = frozenset({OFF, PUBLIC_OFF, "明", "有", "勤務"})
+
+ShiftGroup = Literal["日勤系", "夜勤系", "その他"]
+NextDayKind = Literal["なし", "明け"]
+_ST_START_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+_ST_END_RE = re.compile(r"^(([01]\d|2[0-3]):[0-5]\d|24:00)$")
 
 Strength = Literal["絶対", "強く", "できれば"]
 PENALTY: dict[str, int] = {"強く": 1000, "できれば": 1}  # 絶対は罰点ではなく硬制約
 
 
+def _hhmm_min(t: str) -> int:
+    h, m = t.split(":")
+    return int(h) * 60 + int(m)
+
+
 # ---------------------------------------------------------------- 施設の語彙
+
+class ShiftType(BaseModel):
+    """勤務区分（名前・時刻・休憩・群・人数算入・翌日明け）。"""
+    id: str = Field(min_length=1, max_length=8)
+    name: str = Field(default="", max_length=16)
+    short: str = Field(default="", max_length=4)
+    start: str = "09:00"
+    end: str = "18:00"
+    break_min: int | None = Field(default=None, ge=0, le=360)
+    group: ShiftGroup = "日勤系"
+    counts: bool = True
+    next_day: NextDayKind | None = None
+
+    @model_validator(mode="after")
+    def _normalize(self):
+        if self.id in RESERVED_SHIFT_IDS:
+            raise ValueError(f"勤務区分 id に予約語は使えません: {self.id}")
+        if not _ST_START_RE.match(self.start):
+            raise ValueError(f"勤務区分 {self.id} の開始時刻は HH:MM 形式で指定してください: {self.start}")
+        if not _ST_END_RE.match(self.end):
+            raise ValueError(f"勤務区分 {self.id} の終了時刻は HH:MM 形式で指定してください: {self.end}")
+        if not self.name:
+            self.name = self.id
+        if not self.short:
+            self.short = self.id[:2]
+        if self.next_day is None:
+            s_min, e_min = self.start_minutes(), self.end_minutes()
+            # 日をまたぎ、翌日の 05:00 より後に終わる勤務（16時間夜勤など）は既定で「明け」
+            self.next_day = "明け" if (e_min <= s_min and self.end != "24:00" and e_min > 300) else "なし"
+        return self
+
+    def start_minutes(self) -> int:
+        return _hhmm_min(self.start)
+
+    def end_minutes(self) -> int:
+        return _hhmm_min(self.end)
+
+    def span_minutes(self) -> int:
+        s, e = self.start_minutes(), self.end_minutes()
+        return (e - s) if e > s else (1440 - s + e)
+
+    def effective_break_min(self) -> int:
+        if self.break_min is not None:
+            return self.break_min
+        span = self.span_minutes()
+        if span >= 960:
+            return 240
+        if span > 480:
+            return 60
+        return 0
+
+    def work_minutes(self) -> int:
+        return max(0, self.span_minutes() - self.effective_break_min())
+
+    def work_hours(self) -> float:
+        return self.work_minutes() / 60.0
+
+    def night_overlap_minutes(self, win_start: str = "16:00", win_hours: int = 16) -> int:
+        """夜勤時間帯（win_start から連続 win_hours 時間）との重なり（分・休憩は引かない）。"""
+        s0 = self.start_minutes()
+        e0 = s0 + self.span_minutes()
+        w0 = _hhmm_min(win_start)
+        w1 = w0 + win_hours * 60
+        return sum(max(0, min(e0, w1 + k) - max(s0, w0 + k)) for k in (-1440, 0, 1440))
+
+
+DEFAULT_SHIFT_TYPES: tuple[ShiftType, ...] = (
+    ShiftType(id="早番", name="早番", short="早", start="07:00", end="16:00", break_min=60, group="日勤系", counts=True, next_day="なし"),
+    ShiftType(id="日勤", name="日勤", short="日", start="09:00", end="18:00", break_min=60, group="日勤系", counts=True, next_day="なし"),
+    ShiftType(id="遅番", name="遅番", short="遅", start="12:00", end="21:00", break_min=60, group="日勤系", counts=True, next_day="なし"),
+    ShiftType(id="夜勤", name="夜勤", short="夜", start="16:30", end="09:30", break_min=240, group="夜勤系", counts=True, next_day="明け"),
+)
+
+
+class NightWindow(BaseModel):
+    """72時間ルールの夜勤時間帯（22:00〜05:00 を含む連続16時間が基本）。"""
+    start: str = "16:00"
+    end: str | None = None
+    hours: int = Field(default=16, ge=1, le=24)
+
+    @model_validator(mode="after")
+    def _check(self):
+        if not _ST_START_RE.match(self.start):
+            raise ValueError(f"night_window.start は HH:MM 形式で指定してください: {self.start}")
+        if self.end is not None:
+            if not _ST_END_RE.match(self.end):
+                raise ValueError(f"night_window.end は HH:MM 形式で指定してください: {self.end}")
+            s, e = _hhmm_min(self.start), _hhmm_min(self.end)
+            span = (e - s) if e > s else (1440 - s + e)
+            if span % 60 == 0 and 60 <= span <= 1440:
+                self.hours = span // 60
+        return self
+
 
 class StaffMember(BaseModel):
     staff_id: str
@@ -61,6 +169,37 @@ class Facility(BaseModel):
     staff: list[StaffMember]
     templates: list[TaskTemplate] = Field(default_factory=list)
     need_per_shift: dict[str, int] = Field(default_factory=dict)
+    shift_types: list[ShiftType] = Field(default_factory=list)
+    ward_night_avg_max: int | None = Field(default=None, ge=1, le=200)
+    night_window: NightWindow = Field(default_factory=NightWindow)
+    night_worker_min_h: int = Field(default=16, ge=0, le=100)
+
+    @model_validator(mode="after")
+    def _unique_shift_types(self):
+        seen: set[str] = set()
+        for st in self.shift_types:
+            if st.id in seen:
+                raise ValueError(f"勤務区分 id が重複しています: {st.id}")
+            seen.add(st.id)
+        return self
+
+    def effective_shift_types(self) -> list[ShiftType]:
+        return list(self.shift_types) if self.shift_types else list(DEFAULT_SHIFT_TYPES)
+
+    def work_shift_ids(self) -> tuple[str, ...]:
+        return tuple(st.id for st in self.effective_shift_types())
+
+    def shift_map(self) -> dict[str, ShiftType]:
+        return {st.id: st for st in self.effective_shift_types()}
+
+    def ake_shift_ids(self) -> tuple[str, ...]:
+        return tuple(st.id for st in self.effective_shift_types() if st.next_day == "明け")
+
+    def night_shift_ids(self) -> tuple[str, ...]:
+        return tuple(st.id for st in self.effective_shift_types() if st.group == "夜勤系")
+
+    def counting_shift_ids(self) -> tuple[str, ...]:
+        return tuple(st.id for st in self.effective_shift_types() if st.counts)
 
 
 # ---------------------------------------------------------------- 選択子
@@ -104,8 +243,11 @@ class DaySel(BaseModel):
 class ShiftSel(BaseModel):
     ids: list[str] | None = None            # None = 休を除くすべての勤務
 
-    def kinds(self) -> list[str]:
-        return list(WORK_SHIFTS) if self.ids is None else [k for k in self.ids if k in ALL_KINDS]
+    def kinds(self, work_shifts: Sequence[str] = WORK_SHIFTS) -> list[str]:
+        if self.ids is None:
+            return list(work_shifts)
+        allowed = set(work_shifts) | {OFF, PUBLIC_OFF}
+        return [k for k in self.ids if k in allowed]
 
 
 # ---------------------------------------------------------------- 来歴と寿命
@@ -158,6 +300,8 @@ class Staffing(RuleBase):
     def _bounds(self):
         if self.at_least is None and self.at_most is None:
             raise ValueError("staffing は at_least か at_most のどちらかが要る")
+        if self.shifts.ids and PUBLIC_OFF in self.shifts.ids:
+            raise ValueError("staffing では 公休 を使えません")
         return self
 
 
@@ -167,6 +311,12 @@ class Request(RuleBase):
     days: DaySel
     shifts: ShiftSel                        # 休を含められる（希望休 = 休を希望）
     want: bool = True                       # True=希望 False=回避
+
+    @model_validator(mode="after")
+    def _no_public_off(self):
+        if self.shifts.ids and PUBLIC_OFF in self.shifts.ids:
+            raise ValueError("request では 公休 を使えません")
+        return self
 
 
 class Succession(RuleBase):
@@ -180,6 +330,8 @@ class Succession(RuleBase):
     def _one_of(self):
         if (self.pattern is None) == (self.max_run is None):
             raise ValueError("succession は pattern か max_run のどちらか一方")
+        if self.pattern and any(sel.ids and PUBLIC_OFF in sel.ids for sel in self.pattern):
+            raise ValueError("succession では 公休 を使えません")
         return self
 
 
@@ -191,14 +343,54 @@ class Count(RuleBase):
     unit: Literal["回", "時間"] = "回"
     at_least: float | None = None
     at_most: float | None = None
+    target: int | None = None
+
+    @model_validator(mode="after")
+    def _check_target(self):
+        if self.at_least is not None and self.at_most is not None and self.at_least > self.at_most:
+            raise ValueError("Count は at_least <= at_most にしてください")
+        if self.target is not None:
+            if self.strength == "絶対":
+                raise ValueError("Count の target は絶対（硬制約）では使えません")
+            if self.target < 0:
+                raise ValueError("Count の target は 0 以上にしてください")
+            if (self.at_least is not None and self.target < self.at_least) or (
+                self.at_most is not None and self.target > self.at_most
+            ):
+                raise ValueError("Count の target が上下限と矛盾しています")
+        return self
 
 
 class Balance(RuleBase):
-    """人群の間で勤務数の最大 − 最小が max_spread 以下。人をまたいで集計する点が count と別物。"""
+    """人群・日付群の間で勤務数の最大 − 最小が max_spread 以下。人をまたいで集計する点が count と別物。"""
     type: Literal["balance"] = "balance"
     people: PeopleSel = Field(default_factory=PeopleSel)
     shifts: ShiftSel
+    days: DaySel = Field(default_factory=DaySel)
     max_spread: int
+
+
+class Occurrence(RuleBase):
+    """人ごとに、月の中で完結する勤務並びの出現回数（重なりは数える・月またぎは数えない）。"""
+    type: Literal["occurrence"] = "occurrence"
+    people: PeopleSel = Field(default_factory=PeopleSel)
+    pattern: list[ShiftSel]
+    starts: DaySel = Field(default_factory=DaySel)
+    at_least: int | None = None
+    at_most: int | None = None
+
+    @model_validator(mode="after")
+    def _check(self):
+        if len(self.pattern) < 2:
+            raise ValueError("Occurrence の pattern は2日以上にしてください")
+        if self.at_least is None and self.at_most is None:
+            raise ValueError("Occurrence は at_least か at_most のどちらかが要る")
+        for val in (self.at_least, self.at_most):
+            if val is not None and val < 0:
+                raise ValueError("Occurrence の回数は 0 以上にしてください")
+        if self.at_least is not None and self.at_most is not None and self.at_least > self.at_most:
+            raise ValueError("Occurrence は at_least <= at_most にしてください")
+        return self
 
 
 # ---------------------------------------------------------------- 日次の1型
@@ -213,9 +405,9 @@ class TaskRequest(RuleBase):
     want: bool = False
 
 
-MonthlyRule = Annotated[Union[Staffing, Request, Succession, Count, Balance], Field(discriminator="type")]
+MonthlyRule = Annotated[Union[Staffing, Request, Succession, Count, Balance, Occurrence], Field(discriminator="type")]
 DailyRule = TaskRequest
-AnyRule = Annotated[Union[Staffing, Request, Succession, Count, Balance, TaskRequest], Field(discriminator="type")]
+AnyRule = Annotated[Union[Staffing, Request, Succession, Count, Balance, Occurrence, TaskRequest], Field(discriminator="type")]
 
 
 # ---------------------------------------------------------------- 表

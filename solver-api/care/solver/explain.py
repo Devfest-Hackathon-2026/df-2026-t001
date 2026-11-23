@@ -11,7 +11,9 @@ from .monthly import Broken, MonthlyResult
 
 
 def _line(b: Broken, prefix: str) -> str:
-    ex = f"（例: {b.detail[0]}）" if b.detail else ""
+    ex = f"（例: {b.detail[0]}）" if b.detail and b.detail[0] not in b.label else ""
+    if b.max_dev is not None:
+        return f"{prefix}「{b.label}」から外れた人が{b.count}人（最大{b.max_dev}日ずれ）{ex}"
     return f"{prefix}「{b.label}」が{b.count}件{ex}"
 
 

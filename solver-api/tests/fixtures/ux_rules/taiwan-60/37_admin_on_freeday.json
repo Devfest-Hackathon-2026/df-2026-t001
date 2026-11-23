@@ -1,0 +1,73 @@
+{
+  "id": "u1-37",
+  "uncovered_no": 37,
+  "dataset": "taiwan-60",
+  "source": "台湾 60人",
+  "title": "休日の管理職配置（FREEDAY に主任が A 勤務1人、できれば）",
+  "category": "部品で書ける（一般Staffing）",
+  "utterance": "土日祝日は管理職（A勤務）をできれば1人入れて",
+  "runnable": true,
+  "rules": [
+    {
+      "id": "u1-37",
+      "type": "staffing",
+      "label": "休日のA勤務はできれば主任1人以上",
+      "strength": "できれば",
+      "shifts": {
+        "ids": [
+          "A"
+        ]
+      },
+      "people": {
+        "roles": [
+          "主任"
+        ]
+      },
+      "days": {
+        "dates": [
+          1,
+          2,
+          8,
+          9,
+          15,
+          16,
+          22,
+          23,
+          29,
+          30
+        ]
+      },
+      "at_least": 1
+    }
+  ],
+  "verify": {
+    "kind": "staffing_checks",
+    "checks": [
+      {
+        "people": [
+          "P1",
+          "P2",
+          "P3",
+          "P4"
+        ],
+        "shifts": [
+          "A"
+        ],
+        "days": [
+          1,
+          2,
+          8,
+          9,
+          15,
+          16,
+          22,
+          23,
+          29,
+          30
+        ],
+        "at_least": 1
+      }
+    ],
+    "description": "FREEDAY 10日間のうち主任のA勤務が0人の日数を数える"
+  }
+}

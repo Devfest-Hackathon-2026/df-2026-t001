@@ -1,0 +1,43 @@
+{
+  "id": "u1-18",
+  "uncovered_no": 18,
+  "dataset": "ikegami-2shift",
+  "source": "池上 2Shift",
+  "title": "指定週末・祝日の2連休を月1回以上",
+  "category": "部品が足りない",
+  "missing_part": "Occurrence（Q5）",
+  "utterance": "土日か祝日のどこかで2連休を月に1回は入れて",
+  "runnable": false,
+  "proposed_rules": [
+    {
+      "type": "occurrence",
+      "label": "週末・祝日の2連休を月1回以上",
+      "strength": "強く",
+      "starts": {
+        "dates": [
+          2,
+          3,
+          9,
+          16,
+          23
+        ]
+      },
+      "pattern": [
+        {
+          "ids": [
+            "休"
+          ]
+        },
+        {
+          "ids": [
+            "休"
+          ]
+        }
+      ],
+      "at_least": 1
+    }
+  ],
+  "verify": {
+    "description": "起点日[2,3,9,16,23]で2連続休みが0回の人数を数える"
+  }
+}

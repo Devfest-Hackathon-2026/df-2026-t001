@@ -45,7 +45,7 @@ def is_heavy(method: str, path: str) -> bool:
     return "/daily/" in path or path.endswith("/candidates")
 
 
-AI_PATHS = ("/translate", "/explain", "/chat", "/plan-intent", "/leader-intent", "/employee-intent", "/employee-compose", "/candidate-reasons",
+AI_PATHS = ("/translate", "/translate-inline", "/explain", "/chat", "/plan-intent", "/leader-intent", "/employee-intent", "/employee-compose", "/candidate-reasons",
             "/ask-manual", "/voice")
 
 

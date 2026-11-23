@@ -1,0 +1,100 @@
+{
+  "id": "u1-51",
+  "uncovered_no": 51,
+  "dataset": "ikegami-3shift",
+  "source": "看護協会11",
+  "title": "⑩交代の方向：正循環のみ（D→E→N、逆循環 N→E・E→D・N→D 禁止）",
+  "category": "部品で書ける",
+  "utterance": "シフトは日勤→準夜→深夜の正循環にして、逆戻りは禁止して",
+  "runnable": true,
+  "rules": [
+    {
+      "id": "u1-51a",
+      "type": "succession",
+      "label": "逆循環 N→E を禁止",
+      "strength": "絶対",
+      "pattern": [
+        {
+          "ids": [
+            "N"
+          ]
+        },
+        {
+          "ids": [
+            "E"
+          ]
+        }
+      ],
+      "forbid": true
+    },
+    {
+      "id": "u1-51b",
+      "type": "succession",
+      "label": "逆循環 E→D を禁止",
+      "strength": "絶対",
+      "pattern": [
+        {
+          "ids": [
+            "E"
+          ]
+        },
+        {
+          "ids": [
+            "D"
+          ]
+        }
+      ],
+      "forbid": true
+    },
+    {
+      "id": "u1-51c",
+      "type": "succession",
+      "label": "逆循環 N→D を禁止",
+      "strength": "絶対",
+      "pattern": [
+        {
+          "ids": [
+            "N"
+          ]
+        },
+        {
+          "ids": [
+            "D"
+          ]
+        }
+      ],
+      "forbid": true
+    }
+  ],
+  "verify": {
+    "kind": "forbid_patterns",
+    "patterns": [
+      [
+        [
+          "N"
+        ],
+        [
+          "E"
+        ]
+      ],
+      [
+        [
+          "E"
+        ],
+        [
+          "D"
+        ]
+      ],
+      [
+        [
+          "N"
+        ],
+        [
+          "D"
+        ]
+      ]
+    ],
+    "use_history": true,
+    "description": "前月引き継ぎ含め N→E・E→D・N→D が出現した件数を数える"
+  }
+}

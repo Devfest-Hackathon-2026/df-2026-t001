@@ -21,12 +21,13 @@ from typing import Callable, Literal
 from fastapi import APIRouter
 from pydantic import BaseModel, Field, model_validator
 
+from .dsl import WORK_SHIFTS, ShiftType
 from .inline_verify import check_cells, exclude_hard
 from .learn import ab, scoring
 from .learn.store import ModelStore
 from .solver.monthly import WORK_H
 
-Shift = Literal["早番", "日勤", "遅番", "夜勤"]
+Shift = str
 _DATE = r"^\d{4}-\d{2}-\d{2}$"
 _TS = r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?$"
 _ID = r"^[A-Za-z0-9_.:-]{1,40}$"
@@ -42,7 +43,7 @@ class StaffIn(BaseModel):
     role: str = Field("", max_length=20)
     employment: str = Field("常勤", max_length=10)
     skills: list[str] = Field(default_factory=list, max_length=20)
-    shifts: list[str] = Field(default_factory=list, max_length=4)
+    shifts: list[str] = Field(default_factory=list, max_length=12)
     home_unit: str | None = Field(None, max_length=20)
     years: float = Field(0, ge=0, le=60)
     leave_by: str | None = Field(None, max_length=5)
@@ -55,19 +56,20 @@ class StaffIn(BaseModel):
 class AsgIn(BaseModel):
     staff_id: str = Field(pattern=_ID)
     date: str = Field(pattern=_DATE)
-    shift: Shift
+    shift: str = Field(min_length=1, max_length=8)
     status: str = Field("assigned", max_length=12)
 
 
 class AvailIn(BaseModel):
     staff_id: str = Field(pattern=_ID)
     date: str = Field(pattern=_DATE)
-    shifts: list[str] = Field(default_factory=list, max_length=4)
+    shifts: list[str] = Field(default_factory=list, max_length=12)
 
 
 class RankIn(BaseModel):
     date: str = Field(pattern=_DATE)
-    shift: Shift
+    shift: str = Field(min_length=1, max_length=8)
+    shift_types: list[ShiftType] = Field(default_factory=list, max_length=12)
     unit_id: str | None = Field(None, max_length=20)
     absent_staff_id: str | None = Field(None, max_length=40)
     need_skills: list[str] = Field(default_factory=list, max_length=10)
@@ -92,8 +94,14 @@ class RankIn(BaseModel):
                 Date.fromisoformat(x.date)
         except ValueError as e:
             raise ValueError(f"日付・時刻が不正です: {e}") from None
+        allowed = tuple(st.id for st in self.shift_types) if self.shift_types else WORK_SHIFTS
+        if self.shift not in allowed:
+            raise ValueError(f"勤務区分が不正です: {self.shift}")
+        for a in self.assignments:
+            if a.shift not in allowed:
+                raise ValueError(f"assignments の勤務区分が不正です: {a.shift}")
         if self.cells is not None:
-            check_cells(self.cells, self.date)
+            check_cells(self.cells, self.date, self.shift_types or None)
         return self
 
 
@@ -107,16 +115,20 @@ def _ts(s: str | None) -> datetime:
 def features(body: RankIn, s: StaffIn, work: dict[str, dict[str, str]]) -> dict:
     """Svc.offer_features と同じ列。work は {staff_id: {date: shift}}（休みの連絡済みは含めない）。"""
     d = Date.fromisoformat(body.date)
-    start = datetime(d.year, d.month, d.day, tzinfo=JST) + timedelta(hours=SHIFT_START[body.shift])
+    st_map = {st.id: st for st in body.shift_types}
+    start_h = (st_map[body.shift].start_minutes() / 60.0) if body.shift in st_map else SHIFT_START.get(body.shift, 9.0)
+    start = datetime(d.year, d.month, d.day, tzinfo=JST) + timedelta(hours=start_h)
     t0 = _ts(body.discovered_at)
     mine = work.get(s.id, {})
     run = 0
     while (d - timedelta(days=run + 1)).isoformat() in mine:
         run += 1
     before = [(k, v) for k, v in mine.items() if k < body.date]
-    hours = s.month_hours_before if s.month_hours_before is not None else float(sum(WORK_H[v] for k, v in before if k[:7] == body.date[:7]))
+    work_h = {st.id: st.work_hours() for st in body.shift_types} if body.shift_types else WORK_H
+    night_ids = {st.id for st in body.shift_types if st.group == "夜勤系"} if body.shift_types else {"夜勤"}
+    hours = s.month_hours_before if s.month_hours_before is not None else float(sum(work_h.get(v, 8.0) for k, v in before if k[:7] == body.date[:7]))
     lo = (d - timedelta(days=30)).isoformat()
-    nights = s.nights_last30 if s.nights_last30 is not None else sum(1 for k, v in before if k >= lo and v == "夜勤")
+    nights = s.nights_last30 if s.nights_last30 is not None else sum(1 for k, v in before if k >= lo and v in night_ids)
     return {"staff_id": f"app:{s.id}", "status": "", "lead_hours": round(max((start - t0).total_seconds() / 3600, 0.5), 2),
             "weekday": d.isoweekday() % 7, "shift": body.shift, "same_unit": bool(s.home_unit and s.home_unit == body.unit_id),
             "skill_match": set(body.need_skills) <= set(s.skills), "consec_before": run, "month_hours_before": float(hours),
@@ -147,7 +159,7 @@ def rank(body: RankIn, art: dict | None) -> dict:
         else:
             ok.append(s)
     if body.cells is not None:   # ソルバーの絶対ルールを破る人は、打診の候補にしない
-        ok, hard = exclude_hard(body.date, body.shift, ok, body.cells, body.carry_in, body.month_days, body.first_weekday, body.night_max)
+        ok, hard = exclude_hard(body.date, body.shift, ok, body.cells, body.carry_in, body.month_days, body.first_weekday, body.night_max, body.shift_types or None)
         excluded += hard
     rows =[features(body, s, work) for s in ok]
     probs, tops = None, None

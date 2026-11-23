@@ -1,0 +1,73 @@
+{
+  "id": "u1-28",
+  "uncovered_no": 28,
+  "dataset": "ikegami-3shift",
+  "source": "池上 3Shift",
+  "title": "特定日の必要人数・上限（23日のD 13〜18人、絶対）",
+  "category": "部品で書ける（一般Staffing）",
+  "utterance": "23日の木曜だけ日勤（D）を必ず13〜18人入れて",
+  "runnable": true,
+  "rules": [
+    {
+      "id": "u1-28",
+      "type": "staffing",
+      "label": "23日のDは13〜18人",
+      "strength": "絶対",
+      "shifts": {
+        "ids": [
+          "D"
+        ]
+      },
+      "days": {
+        "dates": [
+          23
+        ]
+      },
+      "at_least": 13,
+      "at_most": 18
+    }
+  ],
+  "verify": {
+    "kind": "staffing_checks",
+    "checks": [
+      {
+        "people": [
+          "A01",
+          "A02",
+          "A03",
+          "A04",
+          "A05",
+          "A06",
+          "A07",
+          "A08",
+          "A09",
+          "A10",
+          "A11",
+          "A12",
+          "A13",
+          "B14",
+          "B15",
+          "B16",
+          "B17",
+          "B18",
+          "B19",
+          "B20",
+          "B21",
+          "B22",
+          "B23",
+          "B24",
+          "B25"
+        ],
+        "shifts": [
+          "D"
+        ],
+        "days": [
+          23
+        ],
+        "at_least": 13,
+        "at_most": 18
+      }
+    ],
+    "description": "23日のD人数が13〜18人から外れた件数を数える"
+  }
+}

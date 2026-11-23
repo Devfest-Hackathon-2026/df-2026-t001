@@ -14,13 +14,105 @@ export const UNITS: Unit[] = [
 export const unitName = (id: string) => UNITS.find((u) => u.id === id)?.name ?? id;
 export const floorOf = (unitId: string) => UNITS.find((u) => u.id === unitId)?.floor ?? 1;
 
-export const SHIFTS: Record<ShiftCode, { start: number; end: number; label: string; breakMin: number; short: string }> = {
-  早番: { start: 7 * 60, end: 16 * 60, label: '07:00〜16:00', breakMin: 60, short: '早' },
-  日勤: { start: 9 * 60, end: 18 * 60, label: '09:00〜18:00', breakMin: 60, short: '日' },
-  遅番: { start: 12 * 60, end: 21 * 60, label: '12:00〜21:00', breakMin: 60, short: '遅' },
-  夜勤: { start: 16 * 60 + 30, end: 33 * 60 + 30, label: '16:30〜翌09:30', breakMin: 120, short: '夜' },
+export interface ShiftTypeDef {
+  id: string;
+  name: string;
+  short: string;
+  start: string;
+  end: string;
+  breakMin: number;
+  group: '日勤系' | '夜勤系' | 'その他';
+  counts: boolean;
+  nextDay: '明け' | 'なし';
+  bg: string;
+  fg: string;
+}
+
+export const DEFAULT_SHIFT_TYPES: ShiftTypeDef[] = [
+  { id: '早番', name: '早番', short: '早', start: '07:00', end: '16:00', breakMin: 60, group: '日勤系', counts: true, nextDay: 'なし', bg: '#eef3f9', fg: '#2f4a73' },
+  { id: '日勤', name: '日勤', short: '日', start: '09:00', end: '18:00', breakMin: 60, group: '日勤系', counts: true, nextDay: 'なし', bg: '#e8eef7', fg: '#2f4a73' },
+  { id: '遅番', name: '遅番', short: '遅', start: '12:00', end: '21:00', breakMin: 60, group: '日勤系', counts: true, nextDay: 'なし', bg: '#f5efe3', fg: '#6e5426' },
+  { id: '夜勤', name: '夜勤', short: '夜', start: '16:30', end: '09:30', breakMin: 120, group: '夜勤系', counts: true, nextDay: '明け', bg: '#ece9f4', fg: '#4a3f73' },
+];
+
+export const THREE_SHIFT_TYPES: ShiftTypeDef[] = [
+  { id: '日', name: '日勤', short: '日', start: '08:30', end: '17:15', breakMin: 45, group: '日勤系', counts: true, nextDay: 'なし', bg: '#e8eef7', fg: '#2f4a73' },
+  { id: '準', name: '準夜', short: '準', start: '16:30', end: '01:15', breakMin: 45, group: '夜勤系', counts: true, nextDay: 'なし', bg: '#f5efe3', fg: '#6e5426' },
+  { id: '深', name: '深夜', short: '深', start: '00:30', end: '09:15', breakMin: 45, group: '夜勤系', counts: true, nextDay: 'なし', bg: '#ece9f4', fg: '#4a3f73' },
+];
+
+const FALLBACK_PALETTE: { bg: string; fg: string }[] = [
+  { bg: '#e8eef7', fg: '#2f4a73' },
+  { bg: '#f5efe3', fg: '#6e5426' },
+  { bg: '#ece9f4', fg: '#4a3f73' },
+  { bg: '#e7f1ec', fg: '#2d6248' },
+  { bg: '#f3e9ee', fg: '#7a3552' },
+];
+
+export function shiftStyleOf(
+  id: string,
+  shiftTypes: readonly ShiftTypeDef[] = DEFAULT_SHIFT_TYPES,
+): { short: string; name: string; bg: string; fg: string; nextDay: '明け' | 'なし'; group: ShiftTypeDef['group']; counts: boolean } {
+  const hit = shiftTypes.find((s) => s.id === id);
+  if (hit) {
+    return {
+      short: hit.short,
+      name: hit.name,
+      bg: hit.bg,
+      fg: hit.fg,
+      nextDay: hit.nextDay,
+      group: hit.group,
+      counts: hit.counts,
+    };
+  }
+  const def = DEFAULT_SHIFT_TYPES.find((s) => s.id === id);
+  if (def) {
+    return {
+      short: def.short,
+      name: def.name,
+      bg: def.bg,
+      fg: def.fg,
+      nextDay: def.nextDay,
+      group: def.group,
+      counts: def.counts,
+    };
+  }
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  const pal = FALLBACK_PALETTE[h % FALLBACK_PALETTE.length];
+  return {
+    short: id.slice(0, 2),
+    name: id,
+    bg: pal.bg,
+    fg: pal.fg,
+    nextDay: 'なし',
+    group: '日勤系',
+    counts: true,
+  };
+}
+
+const toMinOf = (hhmm: string, wrapNext = false) => {
+  const [h, m] = hhmm.split(':').map(Number);
+  return (wrapNext ? h + 24 : h) * 60 + m;
 };
-export const SHIFT_ORDER: ShiftCode[] = ['早番', '日勤', '遅番', '夜勤'];
+
+export const SHIFTS: Record<ShiftCode, { start: number; end: number; label: string; breakMin: number; short: string }> =
+  Object.fromEntries(
+    DEFAULT_SHIFT_TYPES.map((st) => {
+      const next = st.end <= st.start;
+      return [
+        st.id,
+        {
+          start: toMinOf(st.start),
+          end: toMinOf(st.end, next),
+          label: `${st.start}〜${next ? '翌' : ''}${st.end}`,
+          breakMin: st.breakMin,
+          short: st.short,
+        },
+      ];
+    }),
+  ) as Record<ShiftCode, { start: number; end: number; label: string; breakMin: number; short: string }>;
+export const SHIFT_ORDER: ShiftCode[] = DEFAULT_SHIFT_TYPES.map((st) => st.id as ShiftCode);
 
 export const SKILLS: Record<SkillId, { label: string; note: string }> = {
   medical: { label: '医療的ケア', note: '喀痰吸引・経管栄養（研修修了・要件確認済み）' },

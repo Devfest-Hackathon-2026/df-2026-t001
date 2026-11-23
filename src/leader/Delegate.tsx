@@ -8,7 +8,7 @@ import {
 } from '../core/store';
 import type { State } from '../core/store';
 import type { Vacancy } from '../core/types';
-import { Icon } from '../shared/ui';
+import { Icon, Modal } from '../shared/ui';
 import { DayImpact, PlanBeforeAfter, ResolvedView, SkillSituation } from './Impact';
 import { Applicants, JobPreview, PRIORITY_NOTE, SkillWhy } from './Job';
 import { PostFlow, PostSheet, RelayCard } from './Auto';
@@ -138,7 +138,7 @@ export function ChatPanel({ s, v }: { s: State; v: Vacancy }) {
 }
 
 /** 欠員の主カード（いつも最上部）。1行の状態＋主ボタン1つ。ほかは折りたたみ */
-export function MainCard({ s, v, openStaff, onSettings, onManual, onPreviewPlan, docked }: { docked?: boolean; s: State; v: Vacancy; openStaff: (id: string) => void; onSettings: () => void; onManual: () => void; onPreviewPlan: () => void }) {
+export function MainCard({ s, v, openStaff, onSettings, onManual, onPreviewPlan, docked, facts }: { docked?: boolean; facts?: string[]; s: State; v: Vacancy; openStaff: (id: string) => void; onSettings: () => void; onManual: () => void; onPreviewPlan: () => void }) {
   const a = v.auto; const m = a?.mode;
   const [post, setPost] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -148,15 +148,14 @@ export function MainCard({ s, v, openStaff, onSettings, onManual, onPreviewPlan,
   const pend = v.offers.find((o) => o.status === 'pending');
   return (
     <section class="card delegate">
-      <div class="row spread wrap" style="gap:8px"><div class="row" style="gap:8px"><Icon n="smart_toy" /><b style="font-weight:500">シフト作成君</b></div>
+      <div class="row spread wrap" style="gap:8px"><b style="font-weight:500">シフト作成君</b>
         {m === 'running' && <span class="chip pri">対応中</span>}{m === 'paused' && <span class="chip">一時停止</span>}{m === 'waiting_post' && <span class="chip warn">承認待ち</span>}{m === 'posted' && <span class="chip pri">求人掲載中</span>}</div>
 
       {(!a || m === 'ask') && <>
-        <p style="margin-top:8px">この欠員を、シフト作成君に任せますか？</p>
+        {facts && facts.length > 0 && <ul class="vfacts">{facts.map((f) => <li key={f}>{f}</li>)}</ul>}
+        <p class="small" style="margin-top:8px">任せると：時間をずらす → 代わりの人に連絡 → 求人。ほかの人の勤務を変える前と求人の前は、承認を待ちます。</p>
         <button class="btn pri block mainbtn" disabled={busy} onClick={() => { setBusy(true); void delegateAutopilot(v.id, { max: effSettings(s, v).maxCandidates }, !a).finally(() => setBusy(false)); }}>{busy ? '候補を確認中…' : '承認して、シフト作成君に任せる'}</button>
-        <details class="more"><summary>くわしく</summary>
-          <p class="small">時間をずらして足りるか確認 → 代わりの出勤者に打診 → 求人。他の職員に影響する調整と、求人の掲載だけ、あなたの承認を待ちます。</p>
-          <div class="row wrap" style="gap:16px"><button class="linkbtn" onClick={onSettings}>詳細設定</button><button class="linkbtn" onClick={onManual}>自分で対応する（手動）</button></div></details>
+        <div class="row wrap" style="gap:16px;margin-top:4px"><button class="linkbtn" onClick={onManual}>自分で対応する</button><button class="linkbtn" onClick={onSettings}>この欠員だけの設定</button></div>
       </>}
 
       {(m === 'running' || m === 'paused') && a && <>
@@ -192,11 +191,11 @@ export function DetailPanel({ s, v, ranked, plans, pv, setPv, pp, setPp, openSta
   const filled = v.state === 'filled';
   return (
     <details class="card detailcard" open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
-      <summary class="h3" style="cursor:pointer">詳細を見る <span class="small">（時間調整の検討・打診の経過・求人・スキル・スケジュール・ログ）</span></summary>
+      <summary class="h3" style="cursor:pointer">詳しく <span class="small">（その日の人数・時間をずらす案・連絡の順番・求人・記録）</span></summary>
       {open && <div class="stack" style="gap:20px;margin-top:12px">
         {showImpact && <DayImpact s={s} v={v} ranked={ranked} pv={pv} setPv={setPv} plan={plan} planName={plan ? PLAN_LABEL[plans.indexOf(plan)] : undefined} closePlan={() => setPp(null)} />}
 
-        <div><h4 class="sec-title" style="margin-top:0">時間調整の検討結果</h4>
+        <div><h4 class="sec-title" style="margin-top:0">時間をずらす案</h4>
           {!filled && plans.length === 0 && <p class="muted">時間のずらしだけで対応できる案はありません。代わりの出勤者を探します。</p>}
           {filled && v.resolvedBy !== 'adjust' && <p class="muted">時間調整は使わずに対応しました。</p>}
           <div class="stack" style="gap:8px">{!filled && plans.map((p, i) => (
@@ -209,7 +208,7 @@ export function DetailPanel({ s, v, ranked, plans, pv, setPv, pp, setPp, openSta
           <p class="small" style="margin-top:6px">単独で足りないときは、方法を組み合わせて確認します。反映には必ずあなたの承認が必要です。</p>
         </div>
 
-        {ids.length > 0 && a && <div><h4 class="sec-title" style="margin-top:0">打診リレー（優先順）</h4><p class="small" style="margin:-4px 0 8px">{PRIORITY_NOTE}</p>
+        {ids.length > 0 && a && <div><h4 class="sec-title" style="margin-top:0">連絡する順番</h4><p class="small" style="margin:-4px 0 8px">{PRIORITY_NOTE}</p>
           <div class="relay">{ids.map((id, i) => <RelayCard key={id} s={s} v={v} id={id} rank={i + 1} cand={ranked.find((c) => c.staff.id === id)} openStaff={openStaff} setPv={setPv} />)}</div>
           {a.mode === 'running' && v.offers.some((o) => o.status === 'pending') && <div class="row wrap" style="margin-top:8px"><button class="btn sm" onClick={() => skipCandidate(v.id)}>いまの方を飛ばして次の候補へ</button></div>}</div>}
 
@@ -218,7 +217,7 @@ export function DetailPanel({ s, v, ranked, plans, pv, setPv, pp, setPp, openSta
 
         {!filled && <SkillSituation s={s} v={v} ranked={ranked} openStaff={openStaff} />}
 
-        {a && <div><h4 class="sec-title" style="margin-top:0">シフト作成君の動き（時系列）</h4>
+        {a && <div><h4 class="sec-title" style="margin-top:0">記録</h4>
           <ol class="alog">{a.log.map((l, i) => <li key={i} class={l.kind}><span class="at">{hm(l.at)}</span><span class="mk" aria-hidden="true" /><span>{l.text}</span></li>)}</ol></div>}
       </div>}
     </details>
@@ -227,15 +226,12 @@ export function DetailPanel({ s, v, ranked, plans, pv, setPv, pp, setPp, openSta
 
 /** 詳細設定（この欠員だけ。全体の設定を上書き） */
 export function SettingsPanel({ s, v, open, setOpen }: { s: State; v: Vacancy; open: boolean; setOpen: (b: boolean) => void }) {
+  if (!open) return null;
   return (
-    <details class="card detailcard" open={open} onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
-      <summary class="h3" style="cursor:pointer">詳細設定 <span class="small">（この欠員だけ）</span>{v.opts && <span class="chip pri" style="margin-left:8px">上書き中</span>}</summary>
-      {open && <div style="margin-top:12px">
-        <p class="small" style="margin-bottom:8px">この欠員だけの設定です。任せたあとに変えた内容は、これからの手順に反映されます（すでに終わった手順は変わりません）。</p>
-        <SettingsForm val={effSettings(s, v)} onChange={(p) => setVacancyOpts(v.id, p)} />
-        {v.opts && <div class="row wrap" style="margin-top:12px"><button class="btn sm" onClick={() => clearVacancyOpts(v.id)}>全体の設定に戻す</button></div>}
-      </div>}
-    </details>
+    <Modal title="この欠員だけの設定" onClose={() => setOpen(false)} footer={<>{v.opts && <button class="btn" onClick={() => clearVacancyOpts(v.id)}>全体の設定に戻す</button>}<button class="btn pri" onClick={() => setOpen(false)}>閉じる</button></>}>
+      <p class="small" style="margin-bottom:8px">変えた内容は、これからの手順に使います。</p>
+      <SettingsForm val={effSettings(s, v)} onChange={(p) => setVacancyOpts(v.id, p)} />
+    </Modal>
   );
 }
 

@@ -1,0 +1,70 @@
+{
+  "id": "u1-10",
+  "uncovered_no": 10,
+  "dataset": "ikegami-2shift",
+  "source": "池上 2Shift",
+  "title": "飛び石の日勤パターン禁止（休→D→休→D→休）",
+  "category": "部品で書ける",
+  "utterance": "休み・日勤・休み・日勤・休みと飛び石にしないで",
+  "runnable": true,
+  "rules": [
+    {
+      "id": "u1-10",
+      "type": "succession",
+      "label": "休→早番→休→早番→休を禁止",
+      "strength": "強く",
+      "pattern": [
+        {
+          "ids": [
+            "休"
+          ]
+        },
+        {
+          "ids": [
+            "早番"
+          ]
+        },
+        {
+          "ids": [
+            "休"
+          ]
+        },
+        {
+          "ids": [
+            "早番"
+          ]
+        },
+        {
+          "ids": [
+            "休"
+          ]
+        }
+      ],
+      "forbid": true
+    }
+  ],
+  "verify": {
+    "kind": "forbid_patterns",
+    "patterns": [
+      [
+        [
+          "休"
+        ],
+        [
+          "早番"
+        ],
+        [
+          "休"
+        ],
+        [
+          "早番"
+        ],
+        [
+          "休"
+        ]
+      ]
+    ],
+    "use_history": false,
+    "description": "当月内で 休→早番→休→早番→休 が出現した件数を数える"
+  }
+}

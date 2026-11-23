@@ -20,10 +20,11 @@ import time
 from typing import Literal
 
 from ortools.sat.python import cp_model
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, model_validator
 
 from .dsl import OFF, PENALTY, WORK_SHIFTS, DaySel, Request, Staffing
-from .inline_solve import APP_MAX_NIGHTS, APP_MAX_RUN, APP_MIN_OFF, InlineSolveIn, build
+from .inline_solve import (APP_MAX_NIGHTS, APP_MAX_RUN, APP_MIN_OFF, DEFAULT_MIN_INTERVAL_H, InlineSolveIn,
+                           _forbidden_interval_pairs, build)
 from .service import ServiceError
 from .solver.monthly import DEFAULT_WORKERS, HARD_BROKEN_WEIGHT, Broken, _aggregate, _Build, _cells
 
@@ -33,7 +34,7 @@ _WORK = set(WORK_SHIFTS)
 
 
 class VacancyRef(BaseModel):
-    shift: Literal["早番", "日勤", "遅番", "夜勤"]
+    shift: str = Field(min_length=1, max_length=8)
     absent_staff_id: str | None = Field(None, max_length=40)
 
 
@@ -44,16 +45,19 @@ class InlineReplanIn(InlineSolveIn):
     fixed_other_days: Literal[True] = True
     time_limit: float = Field(5.0, ge=1, le=18)      # solve-inline と同じ上限で受け、MAX_TIME に丸める
 
-    @field_validator("cells")
-    @classmethod
-    def _cells(cls, v: dict[str, list[str]]) -> dict[str, list[str]]:
-        for sid, row in v.items():
+    @model_validator(mode="after")
+    def _check_replan(self):
+        work_ids = tuple(st.id for st in self.shift_types) if self.shift_types else WORK_SHIFTS
+        allowed_cells = (*work_ids, "", OFF)
+        if self.vacancy.shift not in work_ids:
+            raise ValueError(f"vacancy.shift の勤務区分が不正です: {self.vacancy.shift}")
+        for sid, row in self.cells.items():
             if len(sid) > 40 or len(row) > 31:
                 raise ValueError(f"cells が不正です: {sid[:40]}")
-            bad = [k for k in row if k not in (*WORK_SHIFTS, "", OFF)]
+            bad = [k for k in row if k not in allowed_cells]
             if bad:
                 raise ValueError(f"勤務区分が不正です: {sid} {bad[:3]}")
-        return v
+        return self
 
 
 class _Hard:
@@ -119,7 +123,7 @@ def _prepare(b: InlineReplanIn):
 
 def _held_before(r: Staffing, fac, base: dict[str, list[str]], d: int, sh: str, absent: str | None) -> bool:
     """その日の人数の目安（軟）を、欠員が出る前の表が満たしていたか。満たしていたものだけ守る（戻す）"""
-    kinds = set(r.shifts.kinds())
+    kinds = set(r.shifts.kinds(fac.work_shift_ids()))
     people = [s for s in fac.staff if r.people.match(s)]
     n = sum(1 for s in people if base[s.staff_id][d - 1] in kinds)
     anyone = not (r.people.ids or r.people.roles or r.people.skills or r.people.employment)
@@ -130,6 +134,12 @@ def _held_before(r: Staffing, fac, base: dict[str, list[str]], d: int, sh: str, 
 
 def _model(b: InlineReplanIn, fac, mo, rules, carry, base, orig, relax: bool):
     N, d, sh = mo.days, b.date, b.vacancy.shift
+    work_ids = fac.work_shift_ids()
+    eff_sts = fac.effective_shift_types()
+    st_map = fac.shift_map()
+    ake_ids = set(fac.ake_shift_ids())
+    night_ids = set(fac.night_shift_ids())
+    max_run = b.max_run if b.max_run is not None else APP_MAX_RUN
     soft = []
     for r in rules:
         if r.strength == "絶対":
@@ -144,29 +154,41 @@ def _model(b: InlineReplanIn, fac, mo, rules, carry, base, orig, relax: bool):
     fixed = {sid: {day: (row[day - 1] or OFF) for day in range(1, N + 1) if day != d} for sid, row in base.items()}
     bd = _Build(fac, mo, soft, fixed=fixed, carry_in=carry, relax=False, boost=None, baseline=base, use_coverage=False)
     H = _Hard(bd, base, carry, relax)
-    W = _WORK
+    W = set(work_ids)
     cap = b.night_max or APP_MAX_NIGHTS
     unavailable = {sid for sid, ds in b.unavailable.items() if d in ds}
+    if b.shift_types or b.shift_times is not None or b.min_interval_h is not None:
+        base_times = {st.id: {"start": st.start, "end": st.end} for st in eff_sts}
+        times = {**base_times, **(b.shift_times or {})}
+        min_iv = b.min_interval_h if b.min_interval_h is not None else DEFAULT_MIN_INTERVAL_H
+        forbid_2, _ = _forbidden_interval_pairs(times, min_iv, ake_ids)
+    else:
+        forbid_2 = [("遅番", "早番")]
     for s in fac.staff:
         sid = s.staff_id
-        H.post("r-ake", "夜勤のあとは翌日を休みにする", [(sid, d - 1, {"夜勤"}), (sid, d, W)], "<=", 1, f"{sid} {d}日")
-        if d < N:
-            H.post("r-ake", "夜勤のあとは翌日を休みにする", [(sid, d, {"夜勤"}), (sid, d + 1, W)], "<=", 1, f"{sid} {d + 1}日")
-        H.post("r-interval", "遅番のあとに早番を置かない", [(sid, d - 1, {"遅番"}), (sid, d, {"早番"})], "<=", 1, f"{sid} {d}日")
-        if d < N:
-            H.post("r-interval", "遅番のあとに早番を置かない", [(sid, d, {"遅番"}), (sid, d + 1, {"早番"})], "<=", 1, f"{sid} {d + 1}日")
-        # 画面の数え方: 夜勤明けの日も勤務日。6日の窓で5日まで（欠員の日 d と、その夜勤明けになる d+1 を含む窓だけ）
-        cov = lambda day: [(sid, day, W), (sid, day - 1, {"夜勤"})]   # noqa: E731
-        for i in range(max(1, d - APP_MAX_RUN), min(d + 1, N - APP_MAX_RUN) + 1):
-            terms = [t for day in range(i, i + APP_MAX_RUN + 1) for t in cov(day)]
-            H.post("r-run", f"連続勤務は{APP_MAX_RUN}日まで（夜勤明けも数える）", terms, "<=", APP_MAX_RUN, f"{sid} {i}日〜")
-        H.post("r-night-cap", f"夜勤は月{cap}回まで", [(sid, day, {"夜勤"}) for day in range(1, N + 1)], "<=", cap, sid)
+        if ake_ids:
+            H.post("r-ake", "夜勤のあとは翌日を休みにする", [(sid, d - 1, ake_ids), (sid, d, W)], "<=", 1, f"{sid} {d}日")
+            if d < N:
+                H.post("r-ake", "夜勤のあとは翌日を休みにする", [(sid, d, ake_ids), (sid, d + 1, W)], "<=", 1, f"{sid} {d + 1}日")
+        for a, c in forbid_2:
+            rid = "r-interval" if (len(forbid_2) == 1 and (a, c) == ("遅番", "早番")) else f"r-interval-{a}-{c}"
+            lbl = f"{st_map[a].name}のあとに{st_map[c].name}を置かない"
+            H.post(rid, lbl, [(sid, d - 1, {a}), (sid, d, {c})], "<=", 1, f"{sid} {d}日")
+            if d < N:
+                H.post(rid, lbl, [(sid, d, {a}), (sid, d + 1, {c})], "<=", 1, f"{sid} {d + 1}日")
+        # 画面の数え方: 明け対象勤務の翌日も勤務日。連勤窓（欠員の日 d と、その明けになる d+1 を含む窓だけ）
+        cov = (lambda day: [(sid, day, W), (sid, day - 1, ake_ids)]) if ake_ids else (lambda day: [(sid, day, W)])
+        for i in range(max(1, d - max_run), min(d + 1, N - max_run) + 1):
+            terms = [t for day in range(i, i + max_run + 1) for t in cov(day)]
+            H.post("r-run", f"連続勤務は{max_run}日まで（夜勤明けも数える）", terms, "<=", max_run, f"{sid} {i}日〜")
+        if night_ids:
+            H.post("r-night-cap", f"夜勤は月{cap}回まで", [(sid, day, night_ids) for day in range(1, N + 1)], "<=", cap, sid)
         if s.employment == "常勤" and not s.is_leader and orig[sid]:
             H.post("r-min-off", f"常勤の公休は月{APP_MIN_OFF}日以上（明けは数えない）",
                    [t for day in range(1, N + 1) for t in cov(day)], "<=", N - APP_MIN_OFF, sid)
         if sid in unavailable:
             H.post(f"na-{sid}", f"{sid} の入れない日", [(sid, d, W)], "<=", 0, f"{sid} {d}日")
-        for k in WORK_SHIFTS:
+        for k in work_ids:
             if k not in orig[sid]:
                 H.post("r-shift-kind", "入れない勤務区分には入れない", [(sid, d, {k})], "<=", 0, f"{sid} {d}日 {k}")
     # 人数: 欠員の勤務区分は「欠員を除いた人数 + 1」に戻す。ほかの区分は基準人数（今それより少なければ今の人数）を下回らない
@@ -174,7 +196,7 @@ def _model(b: InlineReplanIn, fac, mo, rules, carry, base, orig, relax: bool):
     target = sum(1 for row in base.values() if row[d - 1] == sh) + 1
     H.post("r-vacancy", f"{d}日の{sh}を{target}人に戻す（欠員の補充）", [(sid, d, {sh}) for sid in base], ">=", target, f"{d}日 {sh}",
            keep_worse=False, always_hard=True)       # 二度解きでも、欠員は埋める前提で「何を破れば埋まるか」を測る
-    for k in WORK_SHIFTS:
+    for k in work_ids:
         if k != sh and k in need:
             H.post(f"r-staff-{k}", f"{k}は基準人数を下回らない", [(sid, d, {k}) for sid in base], ">=", need[k], f"{d}日 {k}")
     if b.vacancy.absent_staff_id:

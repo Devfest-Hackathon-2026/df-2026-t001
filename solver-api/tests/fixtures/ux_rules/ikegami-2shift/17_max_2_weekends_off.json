@@ -1,0 +1,47 @@
+{
+  "id": "u1-17",
+  "uncovered_no": 17,
+  "dataset": "ikegami-2shift",
+  "source": "池上 2Shift",
+  "title": "週末の連休は月2回まで（Max 2 weekends off）",
+  "category": "部品が足りない",
+  "missing_part": "Occurrence（Q5）",
+  "utterance": "週末の連休は月に2回までにして",
+  "runnable": false,
+  "proposed_rules": [
+    {
+      "type": "occurrence",
+      "label": "週末の連休は月2回まで",
+      "strength": "強く",
+      "starts": {
+        "weekdays": [
+          5
+        ]
+      },
+      "pattern": [
+        {
+          "ids": [
+            "早番",
+            "日勤",
+            "遅番",
+            "休"
+          ]
+        },
+        {
+          "ids": [
+            "公休"
+          ]
+        },
+        {
+          "ids": [
+            "公休"
+          ]
+        }
+      ],
+      "at_most": 2
+    }
+  ],
+  "verify": {
+    "description": "金曜非夜勤＋土曜公休＋日曜公休の並びが月3回以上になる人数を数える"
+  }
+}

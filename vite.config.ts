@@ -8,6 +8,7 @@ export default defineConfig({
       input: {
         leader: 'index.html',
         employee: 'employee.html',
+        setup: 'setup.html',
       },
     },
   },

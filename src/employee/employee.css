@@ -130,3 +130,9 @@ button.card.tap { text-align: left; width: 100%; }
 .modebar { position: sticky; bottom: -24px; margin: 0 -24px; padding: 12px 24px; background: var(--bg); border-top: 1px solid var(--line2); z-index: 2; }
 .mreq.todo { background: var(--pri-bg); border-color: transparent; }
 .modebar .opt { white-space: nowrap; font-size: 14px; gap: 4px; }
+
+/* ホームの一番上：休み・遅刻の連絡 */
+.absent-cta { min-height: 56px; font-size: 16px; margin-bottom: 12px; gap: 8px; }
+.listbtn { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 56px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); text-align: left; }
+.listbtn > span { display: inline-flex; align-items: center; gap: 8px; }
+.listbtn:hover { background: var(--bg2); }

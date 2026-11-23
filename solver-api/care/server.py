@@ -8,7 +8,7 @@ from typing import Literal
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
 from . import guard
@@ -17,6 +17,7 @@ from .ai.reasons import register as register_reasons
 from .ai.insights import make_insights
 from .ai.llm import GeminiLLM
 from .ai.service import AIService
+from .dsl import ShiftType
 from .inline_solve import InlineSolveIn, solve_inline as _solve_inline
 from .learn.analytics import BQAnalytics
 from .learn.store import ModelStore
@@ -177,13 +178,13 @@ class SolveIn(BaseModel):
 class EditIn(BaseModel):
     staff_id: str
     day: int = Field(ge=1, le=31)
-    to: Literal["早番", "日勤", "遅番", "夜勤", "休", ""]
+    to: str = Field(max_length=8)
     reason: str | None = Field(None, max_length=200)
 
 
 class VacancyIn(BaseModel):
     date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
-    shift: Literal["早番", "日勤", "遅番", "夜勤"]
+    shift: str = Field(min_length=1, max_length=8)
     absent_staff_id: str
     reason: str | None = Field(None, max_length=200)
     need_skills: list[str] = Field(default_factory=list, max_length=5)
@@ -328,6 +329,42 @@ def translate_rule(fid: str, body: TranslateIn, req: Request):
     return ai().translate(fid, body.text, month=body.month, staff_id=body.staff_id, day=body.day, ip=_ip(req))
 
 
+class TranslateInlineStaff(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    staff_id: str = Field(min_length=1, max_length=40)
+    role: str = Field("介護職員", max_length=20)
+    employment: str = Field("常勤", max_length=10)
+    skills: list[str] = Field(default_factory=list, max_length=20)
+    shifts: list[str] = Field(default_factory=list, max_length=12)
+
+
+class TranslateInlineIn(BaseModel):
+    text: str = Field(min_length=1, max_length=300)
+    month: str = Field(pattern=r"^\d{4}-\d{2}$")
+    staff: list[TranslateInlineStaff] = Field(min_length=1, max_length=80)
+    shift_types: list[ShiftType] = Field(default_factory=list, max_length=12)
+    staff_id: str | None = Field(default=None, max_length=40)
+    day: int | None = Field(default=None, ge=1, le=31)
+    current: dict[str, list[str]] | None = None
+    carry_in: dict[str, str] | None = None
+
+
+@app.post("/api/v1/rules/translate-inline")
+def translate_rule_inline(body: TranslateInlineIn, req: Request):
+    """画面の職員データで、リーダーの言葉をルール候補・設定案内・未対応へ翻訳する（保存しない）。"""
+    return ai().translate_inline(
+        body.text,
+        month=body.month,
+        staff=[s.model_dump() for s in body.staff],
+        shift_types=[st.model_dump() for st in body.shift_types],
+        staff_id=body.staff_id,
+        day=body.day,
+        current=body.current,
+        carry_in=body.carry_in,
+        ip=_ip(req),
+    )
+
+
 @app.post("/api/v1/facilities/{fid}/explain")
 def explain(fid: str, body: ExplainIn, req: Request):
     """違反・日次の説明を読みやすく言い換える。事実の検査に通らなければ元の説明を返す。"""
@@ -345,30 +382,32 @@ class PlanIntentIn(BaseModel):
     today: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
     staff: list[PlanRef] = Field(max_length=80)
     units: list[PlanRef] = Field(max_length=8)
+    shifts: list[str] | None = Field(default=None, max_length=12)
 
 
 @app.post("/api/v1/plan-intent")
 def plan_intent(body: PlanIntentIn, req: Request):
     """シフト作成チャットの言葉を、1つの操作に分類する（Gemini）。勤務表は変えない。画面側が検証して承認つきで反映する。"""
     return ai().plan_intent(body.text, month=body.month, today=body.today, staff=[s.model_dump() for s in body.staff],
-                            units=[u.model_dump() for u in body.units], ip=_ip(req))
+                            units=[u.model_dump() for u in body.units], ip=_ip(req), shifts=body.shifts)
 
 
 class TextIn(BaseModel):
     text: str = Field(min_length=1, max_length=300)
     today: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    shifts: list[str] | None = Field(default=None, max_length=12)
 
 
 @app.post("/api/v1/leader-intent")
 def leader_intent(body: TextIn, req: Request):
     """リーダー画面のチャットの言葉を、1つの操作に分類する（Gemini）。何も実行しない。"""
-    return ai().leader_intent(body.text, today=body.today, ip=_ip(req))
+    return ai().leader_intent(body.text, today=body.today, ip=_ip(req), shifts=body.shifts)
 
 
 @app.post("/api/v1/employee-intent")
 def employee_intent(body: TextIn, req: Request):
     """職員の申請の言葉を、休み・遅刻・早退・変更・入れる日・毎回の希望に分類する（Gemini）。勤務表は変えない。"""
-    return ai().employee_intent(body.text, today=body.today, ip=_ip(req))
+    return ai().employee_intent(body.text, today=body.today, ip=_ip(req), shifts=body.shifts)
 
 
 register_compose(app, ai, _ip)   # POST /api/v1/employee-compose（care/ai/compose.py）

@@ -10,6 +10,8 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from .. import guard as rate
+from ..dsl import Facility, ShiftType, StaffMember
+from ..inline_solve import InlineSolveIn
 from ..service import ServiceError, Svc, month_obj
 from . import chat as chat_mod
 from . import explain as explain_mod
@@ -125,7 +127,9 @@ class AIService:
             raise ServiceError(404, f"従業員が見つかりません: {staff_id}")
         self.guard(ip)
         safe, _ = self._input(text, fid)
-        sid = staff_id or next(iter(tr.mentioned_staff(safe, fac)), None)
+        mentioned = tr.mentioned_staff(safe, fac)
+        sid = staff_id or next(iter(mentioned), None)
+        pair_ids = list(dict.fromkeys(([staff_id] if staff_id else []) + mentioned))
         try:
             ro = self.svc.roster(fid, month)
             cur, ci = ro["cells"], self.svc.carry_in(fid, month)
@@ -140,16 +144,153 @@ class AIService:
             self._blocked(fid, "translate", e)
         except AIError as e:
             raise unavailable("AI で翻訳できませんでした", e) from e
-        self._log(fid, "translate", usage)
-        errs = tr.validate(d, fac)
+        self._log(fid, "translate", usage, rule_type=d.type)
+        if d.type == "unsupported":
+            ukind = d.unsupported_kind or "other"
+            self.svc.events.emit(fid, "rule_unsupported", {"kind": ukind})
+            return {"facility_id": fid, "model": usage.model, "kind": "unsupported", "unsupported_kind": ukind,
+                    "message": "今のルールの形では書けません。", "candidates": []}
+        if d.type == "setting":
+            errs = tr.validate(d, fac)
+            if errs:
+                raise ServiceError(422, "ルールに翻訳できませんでした: " + "／".join(errs))
+            s_lbl, s_msg = tr.SETTING_GUIDE[d.setting_field or ""]
+            return {"facility_id": fid, "model": usage.model, "kind": "setting", "setting_field": d.setting_field,
+                    "setting_label": s_lbl, "message": s_msg, "candidates": []}
+        errs = tr.validate(d, fac, pair_ids=pair_ids)
         if errs:
             raise ServiceError(422, "ルールに翻訳できませんでした: " + "／".join(errs))
-        cands = tr.candidates(d, fac, mo, cur, staff_id=sid, day=day, text=safe, carry_in=ci)
+        cands = tr.candidates(d, fac, mo, cur, staff_id=sid, day=day, text=safe, carry_in=ci, pair_ids=pair_ids)
         self.judge.submit(fid, "translate", instruction=safe, target_model=usage.model, protect=self._protect_for_judge(fid),
                           source={"対象の人": sid, "指したセル": cell, "勤務区分": tr._vocab(fac)[0], "業務": tr._vocab(fac)[1]},
                           output={"draft": d.model_dump(), "labels": [c.get("label") for c in cands]})
-        return {"facility_id": fid, "model": usage.model, "input": safe, "draft": d.model_dump(), "candidates": cands,
-                "note": "候補は保存されていません。範囲を選んで POST /rules で保存してください"}
+        return {"facility_id": fid, "model": usage.model, "kind": "candidates", "input": safe, "draft": d.model_dump(),
+                "candidates": cands, "note": "候補は保存されていません。範囲を選んで POST /rules で保存してください"}
+
+    def translate_inline(
+        self,
+        text: str,
+        *,
+        month: str,
+        staff: list[dict],
+        shift_types: list[dict] | None,
+        staff_id: str | None,
+        day: int | None,
+        current: dict[str, list[str]] | None,
+        carry_in: dict[str, str] | None,
+        ip: str,
+    ) -> dict:
+        """施設を保存せず、画面の職員データで言葉をルール候補・設定案内・未対応へ翻訳する。"""
+        mo = month_obj(month)
+        day = tr.parse_day(month, day)
+        known_ids = {s["staff_id"] for s in staff}
+        if staff_id and staff_id not in known_ids:
+            raise ServiceError(404, f"職員が見つかりません: {staff_id}")
+        raw_text = (text or "").strip()
+        if not raw_text:
+            raise ServiceError(400, "文章が空です")
+        if len(raw_text) > 300:
+            raise ServiceError(400, "文章が長すぎます（300文字まで）")
+        if current is not None:
+            for sid_k, row in current.items():
+                if sid_k in known_ids and len(row) != mo.days:
+                    raise ServiceError(422, f"勤務表の日数が {mo.days} 日と一致しません: {sid_k}")
+
+        fac = Facility(
+            facility_id="inline",
+            name="inline",
+            staff=[
+                StaffMember(
+                    staff_id=s["staff_id"],
+                    name=s["staff_id"],
+                    role=s.get("role", "介護職員"),
+                    employment=s.get("employment", "常勤"),
+                    skills=list(s.get("skills") or []),
+                    shifts=list(s.get("shifts") or []),
+                )
+                for s in staff
+            ],
+            shift_types=[ShiftType.model_validate(st) for st in (shift_types or [])],
+        )
+        self.guard(ip)
+        safe, _ = self._protect(raw_text, fac.staff, fid="inline")
+        mentioned = tr.mentioned_staff(safe, fac)
+        sid = staff_id or next(iter(mentioned), None)
+        pair_ids = list(dict.fromkeys(([staff_id] if staff_id else []) + mentioned))
+        cell = None
+        if sid and day and current and sid in current:
+            cell = f"{sid} / {month}-{day:02d}（{tr.WD[mo.weekday(day)]}）/ いま {current[sid][day - 1] or '休'}"
+        try:
+            d, usage = tr.draft(self.llm, fac, safe, who=sid, cell=cell, model=PRO_MODEL, inline=True)
+        except ArmorBlocked as e:
+            self._blocked("inline", "translate_inline", e)
+        except AIError as e:
+            raise unavailable("AI で翻訳できませんでした", e) from e
+
+        # 数（人数・回数・差）が抜けた下書きは、1回だけ数を入れ直させる。それでも抜けたら推測せずに聞き返す
+        if tr.missing_number(d):
+            self._log("inline", "translate_inline", usage, rule_type=d.type)
+            self.guard(ip)
+            try:
+                d, usage = tr.draft(self.llm, fac, safe, who=sid, cell=cell, model=PRO_MODEL, inline=True, retry_note=tr.RETRY_NOTE)
+            except ArmorBlocked as e:
+                self._blocked("inline", "translate_inline", e)
+            except AIError as e:
+                raise unavailable("AI で翻訳できませんでした", e) from e
+            if q := tr.missing_number(d):
+                self._log("inline", "translate_inline", usage, rule_type=d.type)
+                self.svc.events.emit("inline", "rule_ask_number", {"type": d.type})
+                return {"model": usage.model, "kind": "ask", "message": q, "candidates": []}
+
+        if d.type == "taskRequest":
+            d = d.model_copy(update={"type": "unsupported", "unsupported_kind": "intra_shift"})
+
+        self._log("inline", "translate_inline", usage, rule_type=d.type)
+        if d.type == "unsupported":
+            ukind = d.unsupported_kind or "other"
+            self.svc.events.emit("inline", "rule_unsupported", {"kind": ukind})
+            return {"model": usage.model, "kind": "unsupported", "unsupported_kind": ukind,
+                    "message": "今のルールの形では書けません。", "candidates": []}
+        if d.type == "setting":
+            errs = tr.validate(d, fac, inline=True)
+            if errs:
+                raise ServiceError(422, "ルールに翻訳できませんでした: " + "／".join(errs))
+            s_lbl, s_msg = tr.SETTING_GUIDE[d.setting_field or ""]
+            return {"model": usage.model, "kind": "setting", "setting_field": d.setting_field,
+                    "setting_label": s_lbl, "message": s_msg, "candidates": []}
+
+        errs = tr.validate(d, fac, pair_ids=pair_ids, inline=True)
+        if errs:
+            raise ServiceError(422, "ルールに翻訳できませんでした: " + "／".join(errs))
+        cands = tr.candidates(
+            d, fac, mo, current,
+            staff_id=sid, day=day, text=safe, carry_in=carry_in, pair_ids=pair_ids, inline=True,
+        )
+        try:
+            InlineSolveIn.model_validate({
+                "month": month,
+                "staff": [
+                    {
+                        "staff_id": s["staff_id"],
+                        "role": s.get("role", "介護職員"),
+                        "employment": s.get("employment", "常勤"),
+                        "skills": list(s.get("skills") or []),
+                        "shifts": list(s.get("shifts") or []),
+                    }
+                    for s in staff
+                ],
+                **({"shift_types": shift_types} if shift_types else {}),
+                "rules": [c["rule"] for c in cands],
+            })
+        except Exception as e:  # noqa: BLE001
+            raise ServiceError(422, f"ルールの形に変換できませんでした: {str(e)[:200]}") from e
+        return {
+            "model": usage.model,
+            "kind": "candidates",
+            "draft": d.model_dump(),
+            "candidates": cands,
+            "note": "候補は保存されていません。選んだ1本を次の作成からルールに加えます。",
+        }
 
     # ---------------------------------------------------------------- 説明の言い換え
     def explain(self, fid: str, kind: str, *, month: str | None, date: str | None, ip: str) -> dict:
@@ -258,7 +399,8 @@ def _clean(self: AIService, text: str, staff=()) -> str:
     return self._protect(text, list(staff), fid="plan")[0]
 
 
-def _plan_intent(self: AIService, text: str, *, month: str, today: str, staff: list[dict], units: list[dict], ip: str) -> dict:
+def _plan_intent(self: AIService, text: str, *, month: str, today: str, staff: list[dict], units: list[dict],
+                 ip: str, shifts: list[str] | None = None) -> dict:
     # 画面から渡された氏名・ユニット名はモデルに送らない。言葉の中の氏名・ユニット名を ID に置き換え（仮名化）、
     # 残りは DLP で伏せ字にする。モデルには ID の一覧だけを渡す
     people = [SimpleNamespace(staff_id=s["id"], name=s["name"]) for s in staff]
@@ -266,21 +408,31 @@ def _plan_intent(self: AIService, text: str, *, month: str, today: str, staff: l
     for u in sorted(units, key=lambda u: -len(u["name"])):
         if len(u["name"].strip()) >= 2:
             safe = safe.replace(u["name"].strip(), u["id"])
-    intent, usage = _classify(self, pi.PlanIntent, pi.SYSTEM, pi.build_prompt(safe, month, today, staff, units), ip=ip, feature="plan_intent")
-    intent = pi.sanitize(intent, month, {s["id"] for s in staff}, {u["id"] for u in units})
+    intent, usage = _classify(self, pi.PlanIntent, pi.SYSTEM, pi.build_prompt(safe, month, today, staff, units, shifts), ip=ip, feature="plan_intent")
+    intent = pi.sanitize(intent, month, {s["id"] for s in staff}, {u["id"] for u in units}, shifts)
     return {"model": usage.model, "intent": intent.model_dump(), "note": "勤務表は変えていません。画面側で確認してから反映します"}
 
 
-def _leader_intent(self: AIService, text: str, *, today: str, ip: str) -> dict:
+def _leader_intent(self: AIService, text: str, *, today: str, ip: str, shifts: list[str] | None = None) -> dict:
     safe = _clean(self, text)
-    intent, usage = _classify(self, pi.LeaderIntent, pi.LEADER_SYSTEM, f"今日: {today}\nリーダーの言葉（データ）: <utterance>{as_data(safe)}</utterance>\n\nこの言葉を1つの操作に分類する。", ip=ip, feature="leader_intent")
-    return {"model": usage.model, "intent": pi.sanitize_leader(intent, today).model_dump(), "note": "何も実行していません。画面側で確認してから行います"}
+    sh = [s.strip()[:8] for s in (shifts or pi.SHIFTS) if s and s.strip()] or pi.SHIFTS
+    intent, usage = _classify(
+        self, pi.LeaderIntent, pi.LEADER_SYSTEM,
+        f"今日: {today}\n勤務帯: {', '.join(sh)}\nリーダーの言葉（データ）: <utterance>{as_data(safe)}</utterance>\n\nこの言葉を1つの操作に分類する。",
+        ip=ip, feature="leader_intent",
+    )
+    return {"model": usage.model, "intent": pi.sanitize_leader(intent, today, shifts).model_dump(), "note": "何も実行していません。画面側で確認してから行います"}
 
 
-def _employee_intent(self: AIService, text: str, *, today: str, ip: str) -> dict:
+def _employee_intent(self: AIService, text: str, *, today: str, ip: str, shifts: list[str] | None = None) -> dict:
     safe = _clean(self, text)
-    intent, usage = _classify(self, pi.EmployeeIntent, pi.EMPLOYEE_SYSTEM, f"今日: {today}\n職員の言葉（データ）: <utterance>{as_data(safe)}</utterance>\n\nこの言葉を分類する。", ip=ip, feature="employee_intent")
-    return {"model": usage.model, "intent": pi.sanitize_employee(intent, today).model_dump(), "note": "勤務表は変えていません。提案として本人とリーダーが確認します"}
+    sh = [s.strip()[:8] for s in (shifts or pi.SHIFTS) if s and s.strip()] or pi.SHIFTS
+    intent, usage = _classify(
+        self, pi.EmployeeIntent, pi.EMPLOYEE_SYSTEM,
+        f"今日: {today}\n勤務帯: {', '.join(sh)}\n職員の言葉（データ）: <utterance>{as_data(safe)}</utterance>\n\nこの言葉を分類する。",
+        ip=ip, feature="employee_intent",
+    )
+    return {"model": usage.model, "intent": pi.sanitize_employee(intent, today, shifts).model_dump(), "note": "勤務表は変えていません。提案として本人とリーダーが確認します"}
 
 
 AIService.plan_intent = _plan_intent  # type: ignore[attr-defined]

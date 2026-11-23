@@ -11,8 +11,9 @@ from datetime import date, datetime, timedelta, timezone
 
 from pydantic import TypeAdapter
 
-from .dsl import (ALL_KINDS, OFF, WORK_SHIFTS, AnyRule, Balance, Count, Facility, Month, MonthlyRule, Origin, PeopleSel, DaySel, Request, ShiftSel, StaffMember,
-                  Staffing, Succession, TaskRequest, TaskTemplate)
+from .dsl import (ALL_KINDS, OFF, WORK_SHIFTS, AnyRule, Balance, Count, Facility, Month, MonthlyRule, Occurrence,
+                  Origin, PeopleSel, DaySel, Request, ShiftSel, StaffMember, Staffing, Succession, TaskRequest,
+                  TaskTemplate)
 from .solver.coverage import slot_label
 from .solver.daily import on_duty, solve_daily
 from .solver.explain import explain_daily, explain_monthly
@@ -265,8 +266,8 @@ class Svc:
                  check: bool = True) -> dict:
         fac, ro = self.facility(fid), self.roster(fid, month)
         to = "" if to in (OFF, "") else to
-        if to and to not in ALL_KINDS:
-            raise ServiceError(400, f"勤務区分が不正です: {to}")
+        if to and to not in set(fac.work_shift_ids()):
+            raise ServiceError(422, f"勤務区分が不正です: {to}")
         if staff_id not in ro["cells"]:
             raise ServiceError(404, f"従業員が見つかりません: {staff_id}")
         if not 1 <= day <= ro["month"].days:
@@ -306,7 +307,8 @@ class Svc:
             if hard:
                 excluded.append({"staff_id": sid, "name": s.name, "reason": f"「{hard}」を破る"})
                 continue
-            hours = sum(WORK_H[x] for x in cells[sid] if x)
+            work_h = {st.id: st.work_hours() for st in fac.effective_shift_types()}
+            hours = sum(work_h.get(x, 8.0) for x in cells[sid] if x)
             reasons = []
             if s.home_unit and s.home_unit == vac.get("unit_id"):
                 reasons.append("同じユニット")
@@ -391,7 +393,9 @@ class Svc:
         day = int(vac["date"][8:10])
         cells = ro["cells"]
         y, m = map(int, vac["date"][:7].split("-"))
-        start = datetime(y, m, day, tzinfo=timezone.utc) + timedelta(hours=self.SHIFT_START[vac["shift"]] - 9)   # JST を UTC に
+        st_map = fac.shift_map()
+        start_h = st_map[vac["shift"]].start_minutes() / 60.0 if vac["shift"] in st_map else self.SHIFT_START.get(vac["shift"], 9.0)
+        start = datetime(y, m, day, tzinfo=timezone.utc) + timedelta(hours=start_h - 9)   # JST を UTC に
         t0 = datetime.fromisoformat((now_iso or vac.get("discovered_at") or vac["created_at"]).replace("Z", "+00:00"))
         run = 0
         while day - 1 - run > 0 and cells[staff_id][day - 2 - run]:
@@ -402,10 +406,12 @@ class Svc:
                 if o["staff_id"] == staff_id and o.get("offered_at") and datetime.fromisoformat(o["offered_at"].replace("Z", "+00:00")) >= t0 - timedelta(days=14):
                     sent14 += 1
         row = cells[staff_id]
+        work_h = {st.id: st.work_hours() for st in fac.effective_shift_types()}
+        night_ids = set(fac.night_shift_ids())
         return {"lead_hours": round(max((start - t0).total_seconds() / 3600, 0.5), 2), "weekday": (ro["month"].first_weekday + day - 1) % 7, "shift": vac["shift"],
                 "same_unit": bool(s.home_unit and s.home_unit == vac.get("unit_id")), "skill_match": set(vac.get("need_skills") or []) <= set(s.skills),
-                "consec_before": run, "month_hours_before": float(sum(WORK_H[x] for x in row[: day - 1] if x)),
-                "nights_last30": sum(1 for x in row[max(0, day - 31): day - 1] if x == "夜勤"), "offers_last14": sent14,
+                "consec_before": run, "month_hours_before": float(sum(work_h.get(x, 8.0) for x in row[: day - 1] if x)),
+                "nights_last30": sum(1 for x in row[max(0, day - 31): day - 1] if x in night_ids), "offers_last14": sent14,
                 "tenure_years": s.years, "employment": s.employment}
 
     def create_vacancy(self, fid: str, date_s: str, shift: str, absent_staff_id: str, *, reason: str | None = None,
@@ -603,12 +609,12 @@ class Svc:
 
         if not rule.id or len(rule.id) > 80 or not rule.label or len(rule.label) > 200:
             bad("id は1〜80文字、label は1〜200文字")
-        days = getattr(rule, "days", None)
-        if days is not None:
-            if days.dates is not None and (len(days.dates) > 31 or any(not 1 <= d <= 31 for d in days.dates)):
-                bad("dates は 1〜31 日")
-            if days.weekdays is not None and any(not 0 <= w <= 6 for w in days.weekdays):
-                bad("weekdays は 0〜6")
+        for day_sel in (getattr(rule, "days", None), getattr(rule, "starts", None)):
+            if day_sel is not None:
+                if day_sel.dates is not None and (len(day_sel.dates) > 31 or any(not 1 <= d <= 31 for d in day_sel.dates)):
+                    bad("dates は 1〜31 日")
+                if day_sel.weekdays is not None and any(not 0 <= w <= 6 for w in day_sel.weekdays):
+                    bad("weekdays は 0〜6")
         n_staff = len(fac.staff)
         lo, hi = getattr(rule, "at_least", None), getattr(rule, "at_most", None)
         if lo is not None and hi is not None and lo > hi:
@@ -635,6 +641,12 @@ class Svc:
         elif isinstance(rule, Balance):
             if not 0 <= rule.max_spread <= 31:
                 bad("max_spread は 0〜31")
+        elif isinstance(rule, Occurrence):
+            if not 2 <= len(rule.pattern) <= 14:
+                bad("pattern は 2〜14 日")
+            for v in (lo, hi):
+                if v is not None and not 0 <= v <= 31:
+                    bad("発生回数は 0〜31")
         elif isinstance(rule, TaskRequest):
             if not rule.task or len(rule.task) > 40:
                 bad("task は1〜40文字")

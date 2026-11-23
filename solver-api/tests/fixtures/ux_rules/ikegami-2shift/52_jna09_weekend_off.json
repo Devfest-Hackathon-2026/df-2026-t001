@@ -1,0 +1,47 @@
+{
+  "id": "u1-52",
+  "uncovered_no": 52,
+  "dataset": "ikegami-2shift",
+  "source": "看護協会11",
+  "title": "⑨週末の連続休日：月1回以上は土日とも前後に夜勤のない休日",
+  "category": "部品が足りない",
+  "missing_part": "Occurrence（Q5）",
+  "utterance": "月に1回は土日の連休（前後に夜勤がない休み）を作って",
+  "runnable": false,
+  "proposed_rules": [
+    {
+      "type": "occurrence",
+      "label": "月1回は土日とも前後に夜勤のない連休",
+      "strength": "強く",
+      "starts": {
+        "weekdays": [
+          5
+        ]
+      },
+      "pattern": [
+        {
+          "ids": [
+            "早番",
+            "日勤",
+            "遅番",
+            "休"
+          ]
+        },
+        {
+          "ids": [
+            "公休"
+          ]
+        },
+        {
+          "ids": [
+            "公休"
+          ]
+        }
+      ],
+      "at_least": 1
+    }
+  ],
+  "verify": {
+    "description": "金曜非夜勤＋土曜公休＋日曜公休の並びが月0回の人数を数える"
+  }
+}

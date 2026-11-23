@@ -1,0 +1,56 @@
+{
+  "id": "u1-06",
+  "uncovered_no": 6,
+  "dataset": "ikegami-2shift",
+  "source": "池上 2Shift",
+  "title": "夜勤の2日後も勤務を入れない（N→休→勤務 禁止）",
+  "category": "部品で書ける",
+  "utterance": "夜勤の翌々日まで勤務を入れないで（夜勤明けの次も休みにして）",
+  "runnable": true,
+  "rules": [
+    {
+      "id": "u1-06",
+      "type": "succession",
+      "label": "夜勤→休→勤務を禁止",
+      "strength": "強く",
+      "pattern": [
+        {
+          "ids": [
+            "夜勤"
+          ]
+        },
+        {
+          "ids": [
+            "休"
+          ]
+        },
+        {
+          "ids": [
+            "早番",
+            "夜勤"
+          ]
+        }
+      ],
+      "forbid": true
+    }
+  ],
+  "verify": {
+    "kind": "forbid_patterns",
+    "patterns": [
+      [
+        [
+          "夜勤"
+        ],
+        [
+          "休"
+        ],
+        [
+          "早番",
+          "夜勤"
+        ]
+      ]
+    ],
+    "use_history": false,
+    "description": "当月内連続3日で 夜勤→休→(早番|夜勤) が出現した件数を数える"
+  }
+}

@@ -5,9 +5,10 @@
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
-from ..dsl import WORK_SHIFTS, TaskTemplate
+from ..dsl import DEFAULT_SHIFT_TYPES, WORK_SHIFTS, ShiftType, TaskTemplate
 
 SLOTS = 48
 SHIFT_SPAN: dict[str, tuple[float, float]] = {"早番": (7.0, 16.0), "日勤": (9.0, 18.0), "遅番": (12.0, 21.0), "夜勤": (16.5, 33.5)}
@@ -17,6 +18,12 @@ SKIP_TASKS = {"nap", "break"}       # 休憩は人ごとの変数として別に
 def hh(s: str) -> float:
     h, m = s.split(":")
     return int(h) + int(m) / 60
+
+
+def _span_of(st: ShiftType) -> tuple[float, float]:
+    s = st.start_minutes() / 60.0
+    e = (st.start_minutes() + st.span_minutes()) / 60.0
+    return s, e
 
 
 def slot_label(k: int) -> str:
@@ -30,9 +37,15 @@ def window(t: TaskTemplate) -> tuple[float, float]:
     return s, e
 
 
-def presence(shift: str, prev_day: bool) -> frozenset[int]:
+def presence(shift: str, prev_day: bool, shift_types: Sequence[ShiftType] | None = None) -> frozenset[int]:
     """その勤務が運用日の何枠目に在席しているか。prev_day=True は前日に始まった勤務。"""
-    a, b = SHIFT_SPAN[shift]
+    if shift_types is not None:
+        st = next((x for x in shift_types if x.id == shift), None)
+        if st is None:
+            return frozenset()
+        a, b = _span_of(st)
+    else:
+        a, b = SHIFT_SPAN[shift]
     if prev_day:
         a, b = a - 24, b - 24
     return frozenset(k for k in range(SLOTS) if a <= k / 2 and k / 2 + 0.5 <= b)
@@ -73,9 +86,12 @@ class Sig:
 
 
 def signatures(templates: list[TaskTemplate], boost: dict[int, int] | None = None,
-               boost_skill: dict[tuple[int, str], int] | None = None) -> list[Sig]:
+               boost_skill: dict[tuple[int, str], int] | None = None,
+               shift_types: Sequence[ShiftType] | None = None) -> list[Sig]:
     """boost: 枠 → 追加で必要な人数、boost_skill: (枠, 資格) → 追加で必要な資格者数。
     日次で足りなかった分を月次へ戻すときに使う。"""
+    sts = list(shift_types) if shift_types is not None else list(DEFAULT_SHIFT_TYPES)
+    counting_ids = [st.id for st in sts if st.counts]
     dem = demand(templates)
     skl: list[dict[str, int]] = [dict() for _ in range(SLOTS)]
     for t in templates:
@@ -85,8 +101,8 @@ def signatures(templates: list[TaskTemplate], boost: dict[int, int] | None = Non
             skl[k][t.skill] = skl[k].get(t.skill, 0) + skill_need(t)    # 同時に走る業務の分は足し合わせる
     groups: dict[tuple[frozenset[str], frozenset[str]], Sig] = {}
     for k in range(SLOTS):
-        today = frozenset(sh for sh in WORK_SHIFTS if k in presence(sh, False))
-        prev = frozenset(sh for sh in WORK_SHIFTS if k in presence(sh, True))
+        today = frozenset(sh for sh in counting_ids if k in presence(sh, False, sts))
+        prev = frozenset(sh for sh in counting_ids if k in presence(sh, True, sts))
         need = dem[k] + (boost or {}).get(k, 0)
         for (bk, sk), n in (boost_skill or {}).items():
             if bk == k:
@@ -101,12 +117,15 @@ def signatures(templates: list[TaskTemplate], boost: dict[int, int] | None = Non
     return [g for g in groups.values() if g.need > 0 or g.skills]
 
 
-def capacity_report(templates: list[TaskTemplate], need_per_shift: dict[str, int]) -> list[tuple[str, int, int]]:
+def capacity_report(templates: list[TaskTemplate], need_per_shift: dict[str, int],
+                    shift_types: Sequence[ShiftType] | None = None) -> list[tuple[str, int, int]]:
     """施設の基準人数で、各枠の在席人数が需要を満たすか（時間帯, 需要, 在席）。足りない枠だけ返す。"""
+    sts = list(shift_types) if shift_types is not None else list(DEFAULT_SHIFT_TYPES)
+    counting_ids = [st.id for st in sts if st.counts]
     dem = demand(templates)
     out = []
     for k in range(SLOTS):
-        on = sum(need_per_shift.get(sh, 0) for sh in WORK_SHIFTS if k in presence(sh, False) or k in presence(sh, True))
+        on = sum(need_per_shift.get(sh, 0) for sh in counting_ids if k in presence(sh, False, sts) or k in presence(sh, True, sts))
         if dem[k] > on:
             out.append((slot_label(k), dem[k], on))
     return out

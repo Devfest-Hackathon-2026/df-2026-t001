@@ -5,7 +5,7 @@ import { inQuiet } from '../core/store';
 import { Icon } from '../shared/ui';
 
 /** デモ用の操作を1つにまとめたメニュー（実際の業務画面とは分けて、上部バーから開く） */
-export function DemoMenu({ s }: { s: State }) {
+export function DemoMenu({ s, onAi }: { s: State; onAi: () => void }) {
   const [open, setOpen] = useState(false);
   const [done, setDone] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -32,6 +32,7 @@ export function DemoMenu({ s }: { s: State }) {
           <div class="stack" style="gap:8px">
             <button class="btn sm block" onClick={() => { if (confirm('架空データを初期状態に戻します。よろしいですか？')) { resetDemo(); setDone(true); setTimeout(() => setDone(false), 1500); } }}><Icon n="restart_alt" sm /> 最初からやり直す</button>
             <a class="btn sm block" href="./employee.html"><Icon n="smartphone" sm /> 従業員画面を開く</a>
+            <button class="btn sm block" onClick={() => { setOpen(false); onAi(); }}><Icon n="school" sm /> AIのしくみ（学習・分析）</button>
             {done && <span class="small" role="status">初期化しました</span>}
           </div>
         </div>

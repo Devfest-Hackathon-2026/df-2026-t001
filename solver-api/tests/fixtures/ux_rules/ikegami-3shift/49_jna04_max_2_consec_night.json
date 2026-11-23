@@ -1,0 +1,60 @@
+{
+  "id": "u1-49",
+  "uncovered_no": 49,
+  "dataset": "ikegami-3shift",
+  "source": "看護協会11",
+  "title": "④夜勤（準夜・深夜）の連続回数は2連続まで",
+  "category": "部品で書ける",
+  "utterance": "準夜と深夜を合わせた夜勤の連続は2回までにして",
+  "runnable": true,
+  "rules": [
+    {
+      "id": "u1-49",
+      "type": "succession",
+      "label": "準夜・深夜（E/N）の3連続を禁止",
+      "strength": "強く",
+      "pattern": [
+        {
+          "ids": [
+            "E",
+            "N"
+          ]
+        },
+        {
+          "ids": [
+            "E",
+            "N"
+          ]
+        },
+        {
+          "ids": [
+            "E",
+            "N"
+          ]
+        }
+      ],
+      "forbid": true
+    }
+  ],
+  "verify": {
+    "kind": "forbid_patterns",
+    "patterns": [
+      [
+        [
+          "E",
+          "N"
+        ],
+        [
+          "E",
+          "N"
+        ],
+        [
+          "E",
+          "N"
+        ]
+      ]
+    ],
+    "use_history": false,
+    "description": "当月内で (E|N) が3日連続する開始件数を数える"
+  }
+}

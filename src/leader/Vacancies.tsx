@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import { SKILLS, staffById, unitName } from '../core/facility';
+import { SHIFTS, SKILLS, staffById, unitName } from '../core/facility';
 import { fmtMD } from '../core/dates';
 import { proposeAdjustments, rankCandidates, skillReasons } from '../core/roster';
 import { assignStaff, confirmApplicant, declineAutopilot, effSettings, offerTo, postJob, respondOffer, simulateApplication, delegateAutopilot, demoApplication } from '../core/store';
@@ -29,9 +29,13 @@ export function Vacancies({ s, vacId, go, openStaff }: { s: State; vacId?: strin
   if (!wide) return v ? <div class="page scroll"><Back onClick={() => go('vac', { vacId: undefined })} /><VacDetail key={v.id} s={s} v={v} go={go} openStaff={openStaff} /></div> : <div class="page scroll">{listEl}</div>;
   return (
     <div class="split">
-      {listOpen && <div class="vac-left"><div class="vac-wrap"><button class="linkbtn vac-tg" onClick={() => setListOpen(false)}><Icon n="chevron_left" sm /> 一覧を畳む</button>{listEl}</div></div>}
+      {listOpen
+        ? <div class="vac-left"><div class="vac-wrap">
+            <div class="vac-h"><b>欠員</b><span class="chip">{list.filter((x) => x.state !== 'filled').length}</span><span style="flex:1" />
+              <button class="iconbtn vac-fold" onClick={() => setListOpen(false)} aria-label="一覧を畳む" title="一覧を畳む"><Icon n="left_panel_close" /></button></div>
+            {listEl}</div></div>
+        : <button class="vac-rail" onClick={() => setListOpen(true)} aria-label="欠員の一覧を開く" title="欠員の一覧を開く"><Icon n="left_panel_open" /><span class="badge">{list.filter((x) => x.state !== 'filled').length}</span><span class="vac-rail-t">欠員</span></button>}
       <div class="main-col scroll">
-        {!listOpen && <button class="btn sm vac-open" onClick={() => setListOpen(true)} aria-label="欠員の一覧を開く"><Icon n="format_list_bulleted" sm /> 欠員一覧<span class="badge" style="position:static;margin-left:4px">{list.length}</span></button>}
         {v ? <VacDetail key={v.id} s={s} v={v} go={go} openStaff={openStaff} /> : <div class="empty">欠員はありません。</div>}</div>
     </div>
   );
@@ -48,19 +52,24 @@ function VacDetail({ s, v, go, openStaff }: { s: State; v: State['vacancies'][nu
   const cands = useMemo(() => (filled ? [] : rankCandidates(s.assignments, v, hopes, s.availability)), [s.assignments, v.id, v.state, s.prefs, s.availability]);
   const plans = useMemo(() => (filled ? [] : proposeAdjustments(s.assignments, v)), [s.assignments, v.id, v.state]);
   const manual = !filled && (v.auto?.mode === 'manual' || manualLocal);
+  const facts = useMemo(() => {
+    const ok = cands.filter((c) => !c.blocked && !c.unfit).length;
+    const sk = v.needSkills.filter((k) => k !== 'night').map((k) => SKILLS[k].label);
+    return [`足りない時間：${SHIFTS[v.shift]?.label ?? v.shift}`, sk.length ? `必要なスキル：${sk.join('・')}` : '必要なスキル：特になし', `代わりに出られそうな人：${ok}人`];
+  }, [cands, v.id]);
   const goManual = () => { if (v.auto && v.auto.mode !== 'manual') declineAutopilot(v.id); setManualLocal(true); };
   const dock = useWide(1100) && !filled && !manual && !!v.offers.length;
   const backToAi = () => { setManualLocal(false); void delegateAutopilot(v.id, { max: effSettings(s, v).maxCandidates }, true); };
   return (
     <div class={dock ? 'vdock' : undefined}>
     <div class="stack" style="padding-bottom:24px;margin-top:8px;min-width:0">
-      <div class="row spread wrap"><div><h2 class="h2">{fmtMD(v.date)} {v.shift}／{unitName(v.unitId)}</h2><p class="muted">{v.id}／{v.reason}</p></div>
+      <div class="row spread wrap"><div><h2 class="h2">{fmtMD(v.date)} {v.shift}／{unitName(v.unitId)}</h2><p class="muted">{v.reason}</p></div>
         <div class="row wrap" style="gap:8px"><span class={`chip ${VAC_STATE[v.state].cls}`}>{VAC_STATE[v.state].label}</span><button class="btn sm" onClick={() => go('day', { date: v.date })}><Icon n="schedule" sm /> その日の1日</button></div></div>
 
       {filled ? <ResultCard s={s} v={v} go={go} openStaff={openStaff} />
         : manual ? <section class="card"><div class="row" style="gap:8px"><Icon n="person" /><b style="font-weight:500">手動で対応中です。シフト作成君は止まっています。</b></div>
           <div class="row wrap" style="margin-top:12px"><button class="btn pri" onClick={backToAi}>シフト作成君に任せる</button></div></section>
-          : <MainCard docked={dock} s={s} v={v} openStaff={openStaff} onSettings={() => setSetOpen(true)} onManual={goManual} onPreviewPlan={() => { const p = plans.find((x) => x.id === v.auto?.planId); if (p) setPp(p.id); setDetailOpen(true); setTimeout(() => document.getElementById('dayimpact')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80); }} />}
+          : <MainCard docked={dock} facts={facts} s={s} v={v} openStaff={openStaff} onSettings={() => setSetOpen(true)} onManual={goManual} onPreviewPlan={() => { const p = plans.find((x) => x.id === v.auto?.planId); if (p) setPp(p.id); setDetailOpen(true); setTimeout(() => document.getElementById('dayimpact')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80); }} />}
 
       {manual && <ManualPanel s={s} v={v} cands={cands} plans={plans} pv={pv} setPv={setPv} pp={pp} setPp={setPp} openStaff={openStaff} />}
       <DetailPanel s={s} v={v} ranked={cands} plans={plans} pv={pv} setPv={setPv} pp={pp} setPp={setPp} openStaff={openStaff} open={detailOpen} setOpen={setDetailOpen} showImpact={!manual} />

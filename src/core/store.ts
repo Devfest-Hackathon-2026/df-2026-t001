@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { Applicant, Assignment, AutopilotSettings, AutoState, ChatMessage, HealthCheck, Notice, ShiftCode, ShiftRequest, RequestKind, Vacancy, AiProposal } from './types';
-import { DEMO_TODAY, LEADER_ID, MY_ID, STAFF, staffById, unitName, SKILLS } from './facility';
+import { DEMO_TODAY, FACILITY, LEADER_ID, MY_ID, STAFF, staffById, unitName, SKILLS } from './facility';
 import { applyAdjust, availFor, buildDay, canWork, coverage, generateBaseRoster, initialVacancies, needSkillsFor, proposeAdjustments, rankCandidates, requiredSkills, vacancyId } from './roster';
 import type { Availability } from './roster';
 import { planMonth, finalize, computeSpares, monthEnd } from './planner';
 import type { Plan } from './planner';
-import { solveMonth, solverEnabled, solverNote } from './solverPlan';
+import { solveMonth, SolverRejectedError, solverEnabled, solverNote } from './solverPlan';
+import type { SolveInlineRes } from './solverPlan';
+import { cellsOf, displayLabel } from './chatRules';
+import type { ChatRule, RuleCand } from './chatRules';
 import { SEED_EVENTS } from './events';
 import type { FacilityEvent } from './events';
 import { interpretLeader } from './leaderai';
@@ -23,6 +26,8 @@ import { reasonsForQueue } from './aireasons';
 export interface Prefs { breakPref?: string; leaveBy?: string; leaveReason?: string; shiftHope: ShiftCode[]; history: { at: string; text: string }[]; }
 export interface Settings { push: boolean; mail: boolean; quietNight: boolean; textSize: 'standard' | 'large'; }
 export type { AutopilotSettings };
+export type FixedValue = ShiftCode | '休';
+export type WishValue = ShiftCode | '勤務';
 export interface State {
   v: number; today: string; now: string; autopilot: AutopilotSettings;
   assignments: Assignment[]; vacancies: Vacancy[]; requests: ShiftRequest[];
@@ -31,6 +36,8 @@ export interface State {
   collection: Collection; availability: Availability;
   plan?: Plan; events: FacilityEvent[]; spareUse: Record<string, number>;
   paidLeave?: Record<string, string[]>; planRequests?: PlanReq[];
+  planFixed?: Record<string, Record<string, Record<string, FixedValue>>>;
+  planWish?: Record<string, Record<string, Record<string, WishValue>>>;
 }
 export type PlanReqKind = 'work' | 'dayoff' | 'paid';
 export interface PlanReq { id: string; kind: PlanReqKind; staffId: string; date: string; shift?: ShiftCode; unitId?: string; status: 'pending' | 'accepted' | 'declined'; at: string; note?: string }
@@ -72,7 +79,7 @@ function seed(): State {
   const a1 = pick('2026-11-24', '日勤'); const a2 = pick('2026-11-19', '日勤');
   const requests: ShiftRequest[] = [
     { id: 'R1', staffId: a1.staffId, date: a1.date, kind: '希望休', reason: '私用', status: 'pending', via: 'form', createdAt: t('09:00'), impact: `日勤（${unitName(a1.unitId)}）に欠員1名が発生します。` },
-    { id: 'R2', staffId: a2.staffId, date: a2.date, kind: '遅刻', detail: '30分遅れ', reason: '通院', status: 'pending', via: 'ai', createdAt: t('10:15'), impact: '対応人数への影響を確認中。' },
+    { id: 'R2', staffId: a2.staffId, date: a2.date, kind: '遅刻', detail: '30分遅れ', reason: '通院', status: 'pending', via: 'ai', createdAt: t('10:15'), impact: `${a2.shift}（${unitName(a2.unitId)}）は最初の30分、1人少なくなります。` },
   ];
   const health: HealthCheck[] = [
     { id: 'H1', staffId: 'EMP-005', date: DEMO_TODAY, at: t('06:50'), temp: 36.4, symptoms: [], household: '症状なし', sleep: '十分', consult: false },
@@ -122,7 +129,7 @@ if (typeof window !== 'undefined') window.addEventListener('storage', (e) => { i
 
 export const getState = () => state;
 export function useStore(): State { const [, f] = useState(0); useEffect(() => { const fn = () => f((n) => n + 1); subs.add(fn); return () => { subs.delete(fn); }; }, []); return state; }
-export const resetDemo = () => commit(seed());
+export const resetDemo = () => { saveChatRules([]); ruleUndo = null; ruleChange = null; commit(seed()); };
 
 const notice = (n: Omit<Notice, 'id' | 'at' | 'read'>): Notice => ({ ...n, id: uid('N'), at: nowStamp(), read: false });
 const set = (fn: (s: State) => Partial<State>) => commit({ ...state, ...fn(state) });
@@ -624,18 +631,110 @@ export function removeEvent(id: string) { set((s) => ({ events: s.events.filter(
 
 // ---- 月次シフトの作成・編集・公開 ----
 const dayOffMap = (s: State, month: string): Record<string, string[]> => (s.collection.month === month ? Object.fromEntries(Object.entries(s.collection.submitted).filter(([, v]) => v).map(([k, v]) => [k, v!.dates])) : {});
+
+function patchMonthCellMap<V extends string>(
+  root: Record<string, Record<string, Record<string, V>>> | undefined,
+  month: string,
+  entries: { staffId: string; date: string; value: V | null }[]
+): Record<string, Record<string, Record<string, V>>> {
+  const byMonth: Record<string, Record<string, V>> = {};
+  for (const [sid, dm] of Object.entries(root?.[month] ?? {})) byMonth[sid] = { ...dm };
+  for (const { staffId, date, value } of entries) {
+    if (value === null) {
+      if (byMonth[staffId]) {
+        delete byMonth[staffId][date];
+        if (!Object.keys(byMonth[staffId]).length) delete byMonth[staffId];
+      }
+    } else {
+      (byMonth[staffId] ??= {})[date] = value;
+    }
+  }
+  const out = { ...(root ?? {}) };
+  if (Object.keys(byMonth).length) out[month] = byMonth;
+  else delete out[month];
+  return out;
+}
+
+export function setPlanFixed(month: string, entries: { staffId: string; date: string; value: FixedValue | null }[]) {
+  if (!entries.length) return;
+  set((s) => ({ planFixed: patchMonthCellMap(s.planFixed, month, entries) }));
+}
+export function clearPlanFixed(month: string) {
+  set((s) => {
+    if (!s.planFixed?.[month]) return {};
+    const out = { ...s.planFixed };
+    delete out[month];
+    return { planFixed: out };
+  });
+}
+export function setPlanWish(month: string, entries: { staffId: string; date: string; value: WishValue | null }[]) {
+  if (!entries.length) return;
+  set((s) => ({ planWish: patchMonthCellMap(s.planWish, month, entries) }));
+}
+
 export function createPlan(month: string, o: { nightMax?: number } = {}) {
-  set((s) => ({ plan: planMonth(month, { assignments: s.assignments, dayOff: dayOffMap(s, month), avail: s.availability, events: s.events, nightMax: o.nightMax }), notices: [notice({ to: 'leader', kind: 'shift', title: `${+month.slice(5)}月のシフト案ができました`, body: '結果を確認し、必要なら編集してから公開してください。', link: 'plan' }), ...s.notices] }));
+  ruleChange = null; ruleUndo = null;
+  set((s) => ({ plan: planMonth(month, { assignments: s.assignments, dayOff: dayOffMap(s, month), avail: s.availability, events: s.events, nightMax: o.nightMax, fixed: s.planFixed?.[month] }), notices: [notice({ to: 'leader', kind: 'shift', title: `${+month.slice(5)}月のシフト案ができました`, body: '結果を確認し、必要なら編集してから公開してください。', link: 'plan' }), ...s.notices] }));
   startSolver(month, o.nightMax);
+}
+
+// ---- シフト作成チャットで足したルール（施設ごとに端末に保存。作成のたびに solve-inline の rules で送る）----
+const RULES_KEY = `care-chat-rules:${FACILITY.name}`;
+function loadChatRules(): ChatRule[] {
+  try { const raw = localStorage.getItem(RULES_KEY); if (raw) { const l = JSON.parse(raw) as ChatRule[]; if (Array.isArray(l)) return l; } } catch { /* 読めなければ空 */ }
+  return [];
+}
+let chatRules: ChatRule[] = typeof localStorage === 'undefined' ? [] : loadChatRules();
+function saveChatRules(l: ChatRule[]) {
+  chatRules = l;
+  try { localStorage.setItem(RULES_KEY, JSON.stringify(l)); } catch { /* 保存できなくても、この画面の間は使う */ }
+  subs.forEach((f) => f());
+}
+export const getChatRules = () => chatRules;
+const activeRules = () => chatRules.filter((r) => r.on).map((r) => r.rule);
+
+/** ルールを足して解き直したときの結果（表の上に出す）。元に戻すための、足す前のルールと表 */
+export interface RuleChange { month: string; label: string; state: 'solving' | 'done' | 'kept' | 'failed'; count?: number; cells?: { staffId: string; date: string; before: string; after: string }[]; message?: string }
+let ruleChange: RuleChange | null = null;
+let ruleUndo: { rules: ChatRule[]; plan: Plan | undefined; month: string } | null = null;
+export const getRuleChange = () => ruleChange;
+export const canUndoRule = () => !!ruleUndo;
+
+/** 候補を1本足す。作成中の表があれば、その表を前の表にして解き直す（変わる勤務を最小にする） */
+export function addChatRule(c: RuleCand, month: string): string {
+  const label = displayLabel(c.label);
+  const rule: ChatRule = { id: uid('R'), label, strength: c.strength, rule: c.rule, on: true, addedAt: nowStamp() };
+  const plan = state.plan && state.plan.month === month ? state.plan : undefined;
+  ruleUndo = { rules: chatRules, plan, month };
+  saveChatRules([...chatRules, rule]);
+  if (!plan || plan.status === 'published' || !solverEnabled()) {
+    ruleChange = null;
+    return `「${label}」を足しました。次にシフトを作るときから使います`;
+  }
+  startSolver(month, plan.stats.nightMax, { label });
+  return `「${label}」を足して、今の表をもとに作り直しています`;
+}
+/** 止める（次の作成から外す）・再開する */
+export function setChatRuleOn(id: string, on: boolean) { saveChatRules(chatRules.map((r) => (r.id === id ? { ...r, on } : r))); }
+export function removeChatRule(id: string) { saveChatRules(chatRules.filter((r) => r.id !== id)); }
+/** 元に戻す：足す前のルールと表に戻す */
+export function undoChatRule(): string {
+  const u = ruleUndo; if (!u) return '戻せる変更がありません';
+  solveCtl?.abort(); solving = null; solveCtl = null;
+  ruleUndo = null; ruleChange = null;
+  saveChatRules(u.rules);
+  set(() => ({ plan: u.plan }));
+  return 'ルールを足す前のルールと表に戻しました';
 }
 
 // ---- 最適化ソルバー（Cloud Run の CP-SAT）で組み直す ----
 // 先に端末内の簡易計算の案を出しておき、ソルバーの結果が届いたら差し替える。届くまでに案が編集されていたら差し替えない。
 // 失敗（接続不可・25秒で打ち切り・混雑 429/503・解なし）したら簡易計算の案のまま（メモに1行だけ残す）。
+// チャットでルールを足したとき（resolve あり）は、今の表を前の表（baseline）にして解き直し、変わった勤務を ruleChange に残す。
 let solving: { month: string } | null = null;
 let solveCtl: AbortController | null = null;
 export const planSolving = () => solving;
-function startSolver(month: string, nightMax?: number) {
+function startSolver(month: string, nightMax?: number, resolve?: { label: string }) {
   solveCtl?.abort();
   const base = state.plan;
   if (!base || base.month !== month || !solverEnabled()) { solving = null; solveCtl = null; return; }
@@ -644,61 +743,123 @@ function startSolver(month: string, nightMax?: number) {
   const unchanged = (p: Plan | undefined) => p === base || (!!p && JSON.stringify(p) === baseKey);
   const ctl = new AbortController(); solveCtl = ctl;
   const timer = setTimeout(() => ctl.abort(), 25_000);
-  solving = { month }; subs.forEach((f) => f());
-  const ctx = { assignments: state.assignments, dayOff: dayOffMap(state, month), avail: state.availability, events: state.events, nightMax };
+  solving = { month };
+  const nDays = +monthEnd(month).slice(8, 10);
+  if (resolve) ruleChange = { month, label: resolve.label, state: 'solving' };
+  subs.forEach((f) => f());
+  const ctx = {
+    assignments: state.assignments,
+    dayOff: dayOffMap(state, month),
+    avail: state.availability,
+    events: state.events,
+    nightMax,
+    fixed: state.planFixed?.[month],
+    shiftWish: state.planWish?.[month],
+    rules: activeRules(),
+    ...(resolve ? { baseline: cellsOf(base.draft, month, nDays) } : {}),
+  };
+  // 変わった勤務はソルバーの changed を使う。無ければ（古いソルバー）前の表と返ってきた表をここで比べる
+  const changedOf = (res: SolveInlineRes): RuleChange => {
+    const bl = ctx.baseline ?? {};
+    const list = res.changed?.cells ?? Object.entries(res.cells).flatMap(([sid, row]) => row.flatMap((v, i) => {
+      const b = bl[sid]?.[i] ?? ''; const a = v === '休' ? '' : v;
+      return b === a ? [] : [{ staff_id: sid, day: i + 1, before: b, after: a }];
+    }));
+    return {
+      month, label: resolve!.label, state: 'done', count: list.length,
+      cells: list.map((c) => ({ staffId: c.staff_id, date: `${month}-${String(c.day).padStart(2, '0')}`, before: c.before || '休', after: c.after || '休' })),
+    };
+  };
   solveMonth(month, ctx, ctl.signal).then(({ draft, res }) => {
     if (solveCtl !== ctl) return;
     set((s) => {
-      if (!unchanged(s.plan)) return {};
-      const p = finalize(month, draft, ctx, 'draft', base.createdAt);
-      if (p.stats.vacantSlots > base.stats.vacantSlots) return { plan: { ...base, notes: [...base.notes, 'ソルバーの案は欠員枠が多かったため、簡易計算の案のままにしています'] } };
-      return { plan: { ...p, notes: [...solverNote(draft, res), ...p.notes] } };
+      if (!unchanged(s.plan)) { if (resolve) ruleChange = { month, label: resolve.label, state: 'kept', message: '作り直している間に表が編集されたため、差し替えませんでした' }; return {}; }
+      const p = finalize(month, draft, { ...ctx, assignments: s.assignments }, 'draft', base.createdAt);
+      if (p.stats.vacantSlots > base.stats.vacantSlots) {
+        if (resolve) ruleChange = { month, label: resolve.label, state: 'kept', message: `作り直すと欠員枠が${base.stats.vacantSlots}→${p.stats.vacantSlots}に増えるため、今の表のままにしています` };
+        return { plan: { ...base, notes: [...base.notes, 'ソルバーの案は欠員枠が多かったため、簡易計算の案のままにしています'] } };
+      }
+      if (resolve) ruleChange = changedOf(res);
+      return { plan: { ...p, appLaborRules: res.app_labor_rules, notes: [...solverNote(draft, res), ...p.notes] } };
     });
   }).catch((e) => {
     if (solveCtl !== ctl) return;
+    const msg = e instanceof SolverRejectedError
+      ? `固定・希望などの条件により作り直せませんでした（${e.userMessage}）。いまの案のまま表示しています`
+      : '最適化ソルバーに接続できなかったため、端末内の簡易計算で作成しました';
+    if (resolve) ruleChange = { month, label: resolve.label, state: 'failed', message: e instanceof SolverRejectedError ? `作り直せませんでした（${e.userMessage}）。今の表のままです` : 'ソルバーに接続できなかったため、今の表のままです。ルールは次の作成から使います' };
     console.info('[solver] 簡易計算の案を使います:', e);
-    set((s) => (unchanged(s.plan) ? { plan: { ...base, notes: [...base.notes, '最適化ソルバーに接続できなかったため、端末内の簡易計算で作成しました'] } } : {}));
+    set((s) => (unchanged(s.plan) ? (resolve ? {} : { plan: { ...base, notes: [...base.notes, msg] } }) : {}));
   }).finally(() => {
     clearTimeout(timer);
     if (solveCtl === ctl) { solving = null; solveCtl = null; subs.forEach((f) => f()); }
   });
 }
-/** 作成中のシフトを手で直す：その日・勤務帯・ユニットの担当を入れ替える（staffId=null で空欄に） */
-export function planAssign(date: string, shift: ShiftCode, unitId: string, staffId: string | null) {
+/** 作成中のシフトを手で直す：その日・勤務帯・ユニットの担当を入れ替える（staffId=null で空欄に）。既定でそのマスを固定にする */
+export function planAssign(date: string, shift: ShiftCode, unitId: string, staffId: string | null, opts: { lock?: boolean } = {}) {
   set((s) => {
     if (!s.plan) return {};
+    const removed = staffId ? undefined : s.plan.draft.find((a) => a.date === date && a.shift === shift && a.unitId === unitId && a.status !== 'absent');
     const draft = s.plan.draft.filter((a) => !(a.date === date && a.shift === shift && a.unitId === unitId)).filter((a) => !(staffId && a.date === date && a.staffId === staffId && a.shift === shift));
     if (staffId) draft.push({ id: uid('P'), date, staffId, shift, unitId, status: 'assigned', source: 'leader' });
-    const ctx = { dayOff: dayOffMap(s, s.plan.month), avail: s.availability, events: s.events, nightMax: s.plan.stats.nightMax };
-    return { plan: finalize(s.plan.month, draft, ctx, 'draft', s.plan.createdAt) };
+    const ctx = { dayOff: dayOffMap(s, s.plan.month), avail: s.availability, events: s.events, nightMax: s.plan.stats.nightMax, assignments: s.assignments };
+    const lockEntries: { staffId: string; date: string; value: FixedValue }[] = [];
+    if (opts.lock !== false) {
+      if (staffId) lockEntries.push({ staffId, date, value: shift });
+      else if (removed) lockEntries.push({ staffId: removed.staffId, date, value: '休' });
+    }
+    return {
+      plan: finalize(s.plan.month, draft, ctx, 'draft', s.plan.createdAt),
+      ...(lockEntries.length ? { planFixed: patchMonthCellMap(s.planFixed, s.plan.month, lockEntries) } : {}),
+    };
   });
 }
 
 // ---- シフト作成：表（エクセル風）の一括編集・有休・依頼 ----
 export type PlanCode = ShiftCode | 'off' | 'paid';
 export interface PlanEdit { staffId: string; date: string; code: PlanCode; unitId?: string }
-export interface PlanSnap { draft: Assignment[]; paid: Record<string, string[]> }
-const ctxOf = (s: State) => ({ dayOff: dayOffMap(s, s.plan!.month), avail: s.availability, events: s.events, nightMax: s.plan!.stats.nightMax });
-/** 1つの勤務（担当）を差し替える。複数のマスをまとめて変えても、計算は1回 */
+export interface PlanSnap { draft: Assignment[]; paid: Record<string, string[]>; fixed?: Record<string, Record<string, FixedValue>> }
+const ctxOf = (s: State) => ({ dayOff: dayOffMap(s, s.plan!.month), avail: s.availability, events: s.events, nightMax: s.plan!.stats.nightMax, assignments: s.assignments });
+/** 1つの勤務（担当）を差し替える。複数のマスをまとめて変えても、計算は1回。変えたマスは既定で固定にする */
 export function planEdit(edits: PlanEdit[]) {
   set((s) => {
     if (!s.plan) return {};
     let draft = s.plan.draft; const paid: Record<string, string[]> = { ...(s.paidLeave ?? {}) };
+    const lockEntries: { staffId: string; date: string; value: FixedValue }[] = [];
     for (const e of edits) {
       draft = draft.filter((a) => !(a.staffId === e.staffId && a.date === e.date && a.status !== 'absent'));
       paid[e.staffId] = (paid[e.staffId] ?? []).filter((d) => d !== e.date);
-      if (e.code === 'paid') paid[e.staffId] = [...paid[e.staffId], e.date];
-      else if (e.code !== 'off') {
+      if (e.code === 'paid') {
+        paid[e.staffId] = [...paid[e.staffId], e.date];
+        lockEntries.push({ staffId: e.staffId, date: e.date, value: '休' });
+      } else if (e.code !== 'off') {
         const unitId = e.unitId ?? staffById(e.staffId).homeUnit;
         draft = draft.filter((a) => !(a.date === e.date && a.shift === e.code && a.unitId === unitId));
         draft = [...draft, { id: uid('P'), date: e.date, staffId: e.staffId, shift: e.code, unitId, status: 'assigned', source: 'leader' }];
+        lockEntries.push({ staffId: e.staffId, date: e.date, value: e.code });
+      } else {
+        lockEntries.push({ staffId: e.staffId, date: e.date, value: '休' });
       }
     }
-    return { plan: finalize(s.plan.month, draft, ctxOf(s), 'draft', s.plan.createdAt), paidLeave: paid };
+    return {
+      plan: finalize(s.plan.month, draft, ctxOf(s), 'draft', s.plan.createdAt),
+      paidLeave: paid,
+      ...(lockEntries.length ? { planFixed: patchMonthCellMap(s.planFixed, s.plan.month, lockEntries) } : {}),
+    };
   });
 }
 export function planRestore(snap: PlanSnap) {
-  set((s) => (s.plan ? { plan: finalize(s.plan.month, snap.draft, ctxOf(s), 'draft', s.plan.createdAt), paidLeave: snap.paid } : {}));
+  set((s) => {
+    if (!s.plan) return {};
+    const m = s.plan.month;
+    let planFixed = s.planFixed;
+    if (snap.fixed !== undefined) {
+      planFixed = { ...(s.planFixed ?? {}) };
+      if (Object.keys(snap.fixed).length) planFixed[m] = snap.fixed;
+      else delete planFixed[m];
+    }
+    return { plan: finalize(m, snap.draft, ctxOf(s), 'draft', s.plan.createdAt), paidLeave: snap.paid, ...(snap.fixed !== undefined ? { planFixed } : {}) };
+  });
 }
 /** 職員への依頼（出勤・希望休の修正・有休の打診）。デモでは数秒後に返事が届く */
 export function sendPlanRequest(kind: PlanReqKind, staffId: string, date: string, o: { shift?: ShiftCode; unitId?: string } = {}): string {

@@ -1,0 +1,109 @@
+{
+  "id": "u1-50",
+  "uncovered_no": 50,
+  "dataset": "ikegami-3shift",
+  "source": "看護協会11",
+  "title": "⑧2連続深夜後の48h休息（2連N後に2日休み）",
+  "category": "部品で書ける",
+  "utterance": "深夜を2日続けてやったら、そのあと2日間は休みを取って",
+  "runnable": true,
+  "rules": [
+    {
+      "id": "u1-50a",
+      "type": "succession",
+      "label": "2連Nの翌日の勤務を禁止",
+      "strength": "強く",
+      "pattern": [
+        {
+          "ids": [
+            "N"
+          ]
+        },
+        {
+          "ids": [
+            "N"
+          ]
+        },
+        {
+          "ids": [
+            "N",
+            "E",
+            "D",
+            "O"
+          ]
+        }
+      ],
+      "forbid": true
+    },
+    {
+      "id": "u1-50b",
+      "type": "succession",
+      "label": "2連N→休の翌日の勤務を禁止",
+      "strength": "強く",
+      "pattern": [
+        {
+          "ids": [
+            "N"
+          ]
+        },
+        {
+          "ids": [
+            "N"
+          ]
+        },
+        {
+          "ids": [
+            "休"
+          ]
+        },
+        {
+          "ids": [
+            "N",
+            "E",
+            "D",
+            "O"
+          ]
+        }
+      ],
+      "forbid": true
+    }
+  ],
+  "verify": {
+    "kind": "forbid_patterns",
+    "patterns": [
+      [
+        [
+          "N"
+        ],
+        [
+          "N"
+        ],
+        [
+          "N",
+          "E",
+          "D",
+          "O"
+        ]
+      ],
+      [
+        [
+          "N"
+        ],
+        [
+          "N"
+        ],
+        [
+          "休"
+        ],
+        [
+          "N",
+          "E",
+          "D",
+          "O"
+        ]
+      ]
+    ],
+    "use_history": false,
+    "description": "当月内で N→N→勤務 と N→N→休→勤務 の開始件数を数える"
+  }
+}

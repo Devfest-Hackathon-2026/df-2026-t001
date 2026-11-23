@@ -1,7 +1,9 @@
-import { useState } from 'preact/hooks';
+import { useMemo, useState } from 'preact/hooks';
 import { RESIDENTS, SKILLS, STAFF, UNITS, unitName } from '../core/facility';
 import type { SkillId, ShiftCode } from '../core/types';
 import type { State } from '../core/store';
+import { loadSavedSetupState } from '../setup/storage';
+import { SETUP_USAGE } from '../setup/usage';
 import { Icon, Modal } from '../shared/ui';
 import { SkillMini } from './util';
 import { ResidentDetailModal, StaffDetailModal, type StaffTab } from './PeopleDetail';
@@ -19,11 +21,26 @@ export function People({ s }: { s: State }) {
 
 function Staff({ s }: { s: State }) {
   const [q, setQ] = useState(''); const [unit, setUnit] = useState(''); const [shift, setShift] = useState(''); const [skill, setSkill] = useState(''); const [pf, setPf] = useState<{ id: string; tab: StaffTab } | null>(null); const [fo, setFo] = useState(false);
+  const savedSetup = useMemo(() => loadSavedSetupState(), []);
   const list = STAFF.filter((x) => x.shifts.length > 0 && (!q || x.name.includes(q) || x.kana.includes(q)) && (!unit || x.homeUnit === unit) && (!shift || x.shifts.includes(shift as ShiftCode)) && (!skill || x.skills.includes(skill as SkillId)));
   const nf = [unit, shift, skill].filter(Boolean).length;
   return (<>
+    <div class="setup-banner">
+      {!SETUP_USAGE.staff ? (
+        <span class="setup-banner-text">
+          {savedSetup
+            ? `この一覧は仮のデータです。はじめの条件で入れた職員（${savedSetup.staff.length}人）は、まだここに出ません`
+            : 'この一覧は仮のデータです。はじめの条件はまだ入れていません。'}
+        </span>
+      ) : (
+        <span class="setup-banner-text">職員の基本一覧は、はじめの条件から見直せます。</span>
+      )}
+      <button type="button" class="btn sm" onClick={() => { location.href = './setup.html?step=4&from=people'; }}>
+        <Icon n="edit" sm /> 職員を直す（はじめの条件）
+      </button>
+    </div>
     <div class="row" style="margin-bottom:12px">
-      <input class="input" style="flex:1" placeholder="名前で検索" value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} aria-label="名前で検索" />
+      <input class="input" style="flex:1;min-width:0" placeholder="名前で検索" value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} aria-label="名前で検索" />
       <button class="btn" onClick={() => setFo(true)}><Icon n="tune" sm /> 絞り込み{nf ? `（${nf}）` : ''}</button>
     </div>
     <p class="muted" style="margin-bottom:8px">{list.length}名</p>

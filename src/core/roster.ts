@@ -133,7 +133,7 @@ export function vacantSlots(all: Assignment[], date: string): { shift: ShiftCode
     const as = all.filter((a) => a.date === date && a.shift === shift && a.unitId === u.id);
     if (as.some((a) => a.status !== 'absent' || a.covered)) continue;
     const absent = as.find((a) => a.status === 'absent');
-    out.push({ shift, unitId: u.id, fromAssignmentId: absent?.id, reason: absent ? `${staffById(absent.staffId).name}さんの休み` : '配置不足（月次案で埋まらず）' });
+    out.push({ shift, unitId: u.id, fromAssignmentId: absent?.id, reason: absent ? `${staffById(absent.staffId).name}さんの休み` : '1か月の案で埋まらなかった枠' });
   }
   return out;
 }

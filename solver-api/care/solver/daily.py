@@ -69,16 +69,19 @@ class DailyResult:
 def on_duty(fac: Facility, month: Month, cells: dict[str, list[str]], day: int,
             carry_in: dict[str, str] | None = None) -> list[OnDuty]:
     """運用日 day に在席する人。退勤上限（leave_by）があれば在席枠を切り詰める。"""
+    sts = fac.effective_shift_types()
+    counting_ids = {st.id for st in sts if st.counts}
+    cross_ids = {st.id for st in sts if st.counts and st.start_minutes() + st.span_minutes() > 1440}
     out: list[OnDuty] = []
     for s in fac.staff:
         row = cells.get(s.staff_id, [])
         today = row[day - 1] if day - 1 < len(row) else ""
         prev = row[day - 2] if day >= 2 else (carry_in or {}).get(s.staff_id, "")
         cand = []
-        if today in WORK_SHIFTS:
-            cand.append((today, False, presence(today, False)))
-        if prev == "夜勤":
-            cand.append((prev, True, presence(prev, True)))
+        if today in counting_ids:
+            cand.append((today, False, presence(today, False, sts)))
+        if prev in cross_ids:
+            cand.append((prev, True, presence(prev, True, sts)))
         for sh, pv, sl in cand:
             if s.leave_by:
                 lim = int(hh(s.leave_by) * 2)

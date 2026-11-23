@@ -1,0 +1,205 @@
+{
+  "id": "u1-35",
+  "uncovered_no": 35,
+  "dataset": "taiwan-60",
+  "source": "台湾 60人",
+  "title": "帯切り替えの禁止・回避（D→N, E→N, E→D 絶対／N→D, N→E, D→E 強く）",
+  "category": "部品で書ける",
+  "utterance": "準夜→日勤や日勤→夜勤・準夜の切り替えは避けて",
+  "runnable": true,
+  "rules": [
+    {
+      "id": "u1-35-dn",
+      "type": "succession",
+      "label": "日勤系→深夜系を禁止",
+      "strength": "絶対",
+      "pattern": [
+        {
+          "ids": [
+            "D",
+            "D+"
+          ]
+        },
+        {
+          "ids": [
+            "N",
+            "N+"
+          ]
+        }
+      ],
+      "forbid": true
+    },
+    {
+      "id": "u1-35-en",
+      "type": "succession",
+      "label": "準夜系→深夜系を禁止",
+      "strength": "絶対",
+      "pattern": [
+        {
+          "ids": [
+            "E",
+            "E+"
+          ]
+        },
+        {
+          "ids": [
+            "N",
+            "N+"
+          ]
+        }
+      ],
+      "forbid": true
+    },
+    {
+      "id": "u1-35-ed",
+      "type": "succession",
+      "label": "準夜系→日勤系を禁止",
+      "strength": "絶対",
+      "pattern": [
+        {
+          "ids": [
+            "E",
+            "E+"
+          ]
+        },
+        {
+          "ids": [
+            "D",
+            "D+"
+          ]
+        }
+      ],
+      "forbid": true
+    },
+    {
+      "id": "u1-35-nd",
+      "type": "succession",
+      "label": "深夜系→日勤系をなるべく避ける",
+      "strength": "強く",
+      "pattern": [
+        {
+          "ids": [
+            "N",
+            "N+"
+          ]
+        },
+        {
+          "ids": [
+            "D",
+            "D+"
+          ]
+        }
+      ],
+      "forbid": true
+    },
+    {
+      "id": "u1-35-ne",
+      "type": "succession",
+      "label": "深夜系→準夜系をなるべく避ける",
+      "strength": "強く",
+      "pattern": [
+        {
+          "ids": [
+            "N",
+            "N+"
+          ]
+        },
+        {
+          "ids": [
+            "E",
+            "E+"
+          ]
+        }
+      ],
+      "forbid": true
+    },
+    {
+      "id": "u1-35-de",
+      "type": "succession",
+      "label": "日勤系→準夜系をなるべく避ける",
+      "strength": "強く",
+      "pattern": [
+        {
+          "ids": [
+            "D",
+            "D+"
+          ]
+        },
+        {
+          "ids": [
+            "E",
+            "E+"
+          ]
+        }
+      ],
+      "forbid": true
+    }
+  ],
+  "verify": {
+    "kind": "forbid_patterns",
+    "patterns": [
+      [
+        [
+          "D",
+          "D+"
+        ],
+        [
+          "N",
+          "N+"
+        ]
+      ],
+      [
+        [
+          "E",
+          "E+"
+        ],
+        [
+          "N",
+          "N+"
+        ]
+      ],
+      [
+        [
+          "E",
+          "E+"
+        ],
+        [
+          "D",
+          "D+"
+        ]
+      ],
+      [
+        [
+          "N",
+          "N+"
+        ],
+        [
+          "D",
+          "D+"
+        ]
+      ],
+      [
+        [
+          "N",
+          "N+"
+        ],
+        [
+          "E",
+          "E+"
+        ]
+      ],
+      [
+        [
+          "D",
+          "D+"
+        ],
+        [
+          "E",
+          "E+"
+        ]
+      ]
+    ],
+    "use_history": true,
+    "description": "異なる正規帯（日勤/準夜/深夜）間の2日連続切り替え件数を数える"
+  }
+}

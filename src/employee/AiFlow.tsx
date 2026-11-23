@@ -31,9 +31,9 @@ export function ActionGrid({ onPick }: { onPick: (k: K) => void }) {
   );
 }
 
-export function AiSheet({ s, kind, onClose, onSent }: { s: State; kind: K; onClose: () => void; onSent: () => void }) {
-  const [month, setMonth] = useState(s.today.slice(0, 7) + '-01');
-  const [dates, setDates] = useState<string[]>([]);
+export function AiSheet({ s, kind, date0, onClose, onSent }: { s: State; kind: K; date0?: string; onClose: () => void; onSent: () => void }) {
+  const [month, setMonth] = useState((date0 ?? s.today).slice(0, 7) + '-01');
+  const [dates, setDates] = useState<string[]>(date0 ? [date0] : []);
   const [mins, setMins] = useState<number | null>(null); // 遅刻の分数
   const [time, setTime] = useState<string>(''); // 早退・休憩・退勤の時刻
   const [reason, setReason] = useState('');

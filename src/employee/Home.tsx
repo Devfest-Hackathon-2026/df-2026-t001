@@ -5,10 +5,14 @@ import { addDays, fmtMD, fmtMin, DOW_JA, parseYmd } from '../core/dates';
 import { useState } from 'preact/hooks';
 import { Icon } from '../shared/ui';
 import { MonthCard, MonthRequest } from './Request';
+import { AiSheet, type K } from './AiFlow';
+import { Modal } from '../shared/ui';
 import { Ctx, ShiftChip, myAssign, simMin } from './common';
 
 export function Home({ s, c }: { s: State; c: Ctx }) {
   const [req, setReq] = useState(false);
+  const [pickK, setPickK] = useState(false);
+  const [sheet, setSheet] = useState<K | null>(null);
   const now = simMin(s);
   const today = s.today;
   const mine = buildDay(s.assignments, today).filter((r) => r.staff.id === MY_ID);
@@ -31,6 +35,7 @@ export function Home({ s, c }: { s: State; c: Ctx }) {
   return (
     <div class="pg">
       <h1 class="ptitle">ホーム</h1>
+      <button class="btn pri block absent-cta" onClick={() => setPickK(true)}><Icon n="event_busy" />休み・遅刻を連絡</button>
       {working && a ? (
         <>
           <section class="card">
@@ -55,7 +60,7 @@ export function Home({ s, c }: { s: State; c: Ctx }) {
                 return (
                   <li key={i} class={`tl-i${isCur ? ' cur' : ''}${t.group === 'rest' ? ' rest' : ''}`} style={`--tc:${t.fg};--tb:${t.bg};--bar:${g.bar}`}>
                     <div class="tl-time">{fmtMin(b.start)}<br /><span class="small">{fmtMin(b.end)}</span></div>
-                    <div class="tl-body"><b>{b.label}</b><div class="small">{unitName(b.unitId ?? a.unitId)}</div></div>
+                    <div class="tl-body"><b>{b.label}</b>{b.unitId && b.unitId !== a.unitId && <div class="small">{unitName(b.unitId)}で応援</div>}</div>
                     {isCur && <span class="pillnow">いま</span>}{isNext && <span class="pillnext">次</span>}
                   </li>
                 );
@@ -79,6 +84,10 @@ export function Home({ s, c }: { s: State; c: Ctx }) {
 
       <MonthCard s={s} c={c} quiet onOpen={() => setReq(true)} />
       {req && <MonthRequest s={s} c={c} onClose={() => setReq(false)} />}
+      {pickK && <Modal title="何を連絡しますか？" onClose={() => setPickK(false)}>
+        <div class="stack" style="gap:8px">{([['休み', 'event_busy', '勤務日を休む'], ['遅刻', 'schedule', '出勤が遅れる'], ['早退', 'logout', '早めに帰る']] as const).map(([k, ic, h]) => <button key={k} class="listbtn" onClick={() => { setPickK(false); setSheet(k); }}><span><Icon n={ic} /> <b style="font-weight:500">{k}</b> <span class="small">{h}</span></span><Icon n="chevron_right" /></button>)}</div>
+      </Modal>}
+      {sheet && <AiSheet s={s} kind={sheet} date0={working && a && !onTail ? a.date : next?.date} onClose={() => setSheet(null)} onSent={() => { setSheet(null); c.toast('リーダーに送りました'); }} />}
 
       <section class="card">
         <div class="row spread"><h2 class="h2">お知らせ</h2><button class="link" onClick={c.openNotices}>すべて見る</button></div>

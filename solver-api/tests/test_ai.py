@@ -319,3 +319,13 @@ def test_plan_intent_extra_ops_are_validated(synth):
     client, *_ = make(synth, llm)
     i = client.post("/api/v1/plan-intent", json=PI_BODY).json()["intent"]
     assert [o["date"] for o in i["extra"]] == ["2026-12-06"]            # 範囲外のID・勤務帯の無い入れる操作は捨てる
+
+
+def test_plan_intent_add_rule_passes_through_without_staff_or_date(synth):
+    """Q7: 決まりの言葉は add_rule に分類し、人・日付が無くても unknown に倒さない（中身は translate-inline が読む）。"""
+    from care.ai.planintent import SYSTEM, PlanIntent
+    llm = FakeLLM(structured=[PlanIntent(intent="add_rule", staff_ids=["EVIL"], date="2027-01-05")])
+    client, *_ = make(synth, llm)
+    i = client.post("/api/v1/plan-intent", json={**PI_BODY, "text": "月1回は土日とも休みにして"}).json()["intent"]
+    assert i["intent"] == "add_rule" and i["staff_ids"] == [] and i["date"] is None
+    assert "add_rule" in SYSTEM

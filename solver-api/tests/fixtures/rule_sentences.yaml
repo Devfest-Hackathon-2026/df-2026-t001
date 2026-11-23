@@ -1,0 +1,615 @@
+# Q6 ルール翻訳（translate / translate-inline）評価用文集（全36文）
+# 出所: U0 uncovered.md（日本看護協会11項目・愛知事例集・池上 2Shift/3Shift・台湾60人）・coNschel・介護現場の口語
+
+- id: req_day_off_specific
+  source: 介護現場（個人希望休）
+  utterance: "この日休ませてあげて"
+  staff_id: "EMP-001"
+  day: 5
+  draft:
+    type: request
+    shift_ids: ["休"]
+    want: true
+  expect:
+    kind: candidates
+    rule_type: request
+    scopes_include: ["day", "person_always"]
+
+- id: req_weekday_avoid_night
+  source: 介護現場（曜日回避）
+  utterance: "EMP-002さんは絶対に水曜の夜勤に入れないで"
+  draft:
+    type: request
+    shift_ids: ["夜勤"]
+    want: false
+    weekdays: [3]
+    strength_hint: "絶対"
+  expect:
+    kind: candidates
+    rule_type: request
+    strength: "絶対"
+    weekdays: [3]
+
+- id: req_shift_wish_early
+  source: 介護現場（勤務希望）
+  utterance: "この人は早番に入れるようにして"
+  staff_id: "EMP-003"
+  draft:
+    type: request
+    shift_ids: ["早番"]
+    want: true
+  expect:
+    kind: candidates
+    rule_type: request
+
+- id: succ_late_early
+  source: 介護現場（勤務間隔並び）
+  utterance: "遅番の翌日に早番を置かないで"
+  draft:
+    type: succession
+    shift_ids: ["遅番"]
+    after_shift_ids: ["早番"]
+  expect:
+    kind: candidates
+    rule_type: succession
+
+- id: succ_night_two_days_off
+  source: 池上 2Shift No.06
+  utterance: "夜勤の翌々日まで勤務を入れないで（夜勤→休→勤務は避けて）"
+  draft:
+    type: succession
+    pattern: [["夜勤"], ["休"], ["早番", "日勤", "遅番", "夜勤"]]
+  expect:
+    kind: candidates
+    rule_type: succession
+    pattern_len: 3
+
+- id: succ_max_3_consec_early
+  source: 池上 2Shift No.07
+  utterance: "早番を4日続けて入れないで"
+  draft:
+    type: succession
+    pattern: [["早番"], ["早番"], ["早番"], ["早番"]]
+  expect:
+    kind: candidates
+    rule_type: succession
+    pattern_len: 4
+
+- id: succ_max_5_consec_off
+  source: 池上 2Shift No.08 / 3Shift No.22
+  utterance: "6日以上の連休は作らないで"
+  draft:
+    type: succession
+    pattern: [["休"], ["休"], ["休"], ["休"], ["休"], ["休"]]
+  expect:
+    kind: candidates
+    rule_type: succession
+    pattern_len: 6
+
+- id: succ_min_2_consec_work
+  source: 池上 3Shift No.21 / 台湾 No.33
+  utterance: "休み・仕事・休みの飛び石勤務は避けて"
+  draft:
+    type: succession
+    pattern: [["休"], [], ["休"]]
+  expect:
+    kind: candidates
+    rule_type: succession
+    pattern_len: 3
+
+- id: succ_max_6_days_between_day_len8
+  source: 池上 3Shift No.26（長さ8）
+  utterance: "D勤務とD勤務の間が7日以上空かないようにして"
+  shift_types:
+    - {id: "D", name: "Day", start: "06:00", end: "16:00", group: "日勤系"}
+    - {id: "E", name: "Evening", start: "12:00", end: "20:00", group: "日勤系"}
+    - {id: "N", name: "Night", start: "18:00", end: "06:00", group: "夜勤系"}
+    - {id: "O", name: "Other", start: "06:00", end: "18:00", group: "その他", counts: false}
+  draft:
+    type: succession
+    pattern: [["D"], ["E", "N", "O", "休"], ["E", "N", "O", "休"], ["E", "N", "O", "休"], ["E", "N", "O", "休"], ["E", "N", "O", "休"], ["E", "N", "O", "休"], ["E", "N", "O", "休"]]
+  expect:
+    kind: candidates
+    rule_type: succession
+    pattern_len: 8
+
+- id: succ_avoid_5_consec_work
+  source: 台湾 60人 No.32
+  utterance: "5連勤はなるべく避けて（4連勤までにして）"
+  draft:
+    type: succession
+    max_run: 4
+    strength_hint: "強く"
+  expect:
+    kind: candidates
+    rule_type: succession
+    max_run: 4
+
+- id: succ_jna10_forward_rotation
+  source: 看護協会 11項目⑩ / 池上 3Shift No.51
+  utterance: "深夜の翌日に準夜は禁止して"
+  shift_types:
+    - {id: "日", name: "日勤", start: "08:30", end: "17:00", group: "日勤系"}
+    - {id: "準", name: "準夜", start: "16:30", end: "01:00", group: "夜勤系", next_day: "なし"}
+    - {id: "深", name: "深夜", start: "00:30", end: "09:00", group: "夜勤系"}
+  draft:
+    type: succession
+    shift_ids: ["深"]
+    after_shift_ids: ["準"]
+    strength_hint: "絶対"
+  expect:
+    kind: candidates
+    rule_type: succession
+    strength: "絶対"
+
+- id: cnt_min_9_days_off
+  source: 池上 2Shift No.11 / 3Shift No.23
+  utterance: "休みは月に最低9日は取って"
+  draft:
+    type: count
+    shift_ids: ["休"]
+    at_least: 9
+  expect:
+    kind: candidates
+    rule_type: count
+    at_least: 9
+
+- id: cnt_weekend_pub_off_target4
+  source: 台湾 60人 No.38
+  utterance: "土日の公休はみんな月4回くらいを目標にして"
+  draft:
+    type: count
+    shift_ids: ["公休"]
+    target: 4
+    weekdays: [0, 6]
+  expect:
+    kind: candidates
+    rule_type: count
+    target: 4
+    weekdays: [0, 6]
+
+- id: cnt_night_max_4
+  source: 介護現場（曖昧言い換え）
+  utterance: "EMP-001さんの夜勤はできれば月4回までにして"
+  draft:
+    type: count
+    shift_ids: ["夜勤"]
+    at_most: 4
+    strength_hint: "できれば"
+  expect:
+    kind: candidates
+    rule_type: count
+    strength: "できれば"
+    at_most: 4
+
+- id: cnt_week1_max_6_work
+  source: 池上 2Shift No.12 / 愛知 No.59
+  utterance: "1日から7日の勤務は6回以下にして"
+  draft:
+    type: count
+    shift_ids: []
+    at_most: 6
+    dates: [1, 2, 3, 4, 5, 6, 7]
+  expect:
+    kind: candidates
+    rule_type: count
+    dates: [1, 2, 3, 4, 5, 6, 7]
+
+- id: bal_night_spread2
+  source: 介護現場（公平性）
+  utterance: "夜勤の回数の差を2回以内に揃えて"
+  draft:
+    type: balance
+    shift_ids: ["夜勤"]
+    max_spread: 2
+  expect:
+    kind: candidates
+    rule_type: balance
+    max_spread: 2
+
+- id: bal_weekend_pub_off_spread1
+  source: 台湾 60人 No.39
+  utterance: "土日の公休回数が人によって偏らないよう差1以内にして"
+  draft:
+    type: balance
+    shift_ids: ["公休"]
+    max_spread: 1
+    weekdays: [0, 6]
+  expect:
+    kind: candidates
+    rule_type: balance
+    max_spread: 1
+    weekdays: [0, 6]
+
+- id: occ_jna09_weekend_off
+  source: 看護協会 11項目⑨ / Q6代表例
+  utterance: "月1回は土日とも休みにして"
+  draft:
+    type: occurrence
+    pattern: [["公休"], ["公休"]]
+    start_weekdays: [6]
+    at_least: 1
+  expect:
+    kind: candidates
+    rule_type: occurrence
+    start_weekdays: [6]
+    at_least: 1
+
+- id: occ_max_2_weekends_off
+  source: 池上 2Shift No.17
+  utterance: "金曜に夜勤が入らない土日連休は月2回までにして"
+  draft:
+    type: occurrence
+    pattern: [["早番", "日勤", "遅番", "休"], ["公休"], ["公休"]]
+    start_weekdays: [5]
+    at_most: 2
+  expect:
+    kind: candidates
+    rule_type: occurrence
+    start_weekdays: [5]
+    at_most: 2
+
+- id: occ_min_2_three_day_off
+  source: coNschel（3連休2回以上）
+  utterance: "3連休を月に2回以上入れて"
+  draft:
+    type: occurrence
+    pattern: [["休"], ["休"], ["休"]]
+    at_least: 2
+  expect:
+    kind: candidates
+    rule_type: occurrence
+    at_least: 2
+
+- id: occ_min_1_specified_weekend_off
+  source: 池上 2Shift No.18
+  utterance: "2日・9日・16日・23日のどこかから始まる2連休を月1回は入れて"
+  draft:
+    type: occurrence
+    pattern: [["休"], ["休"]]
+    dates: [2, 9, 16, 23]
+    at_least: 1
+  expect:
+    kind: candidates
+    rule_type: occurrence
+    dates: [2, 9, 16, 23]
+    at_least: 1
+
+- id: pair_no_same_night_2people
+  source: 介護現場（ペア回避）
+  utterance: "EMP-001さんとEMP-002さんは同じ日の夜勤に入れないで"
+  draft:
+    type: pair
+    shift_ids: ["夜勤"]
+  expect:
+    kind: candidates
+    rule_type: staffing
+    at_most: 1
+
+- id: pair_no_same_early_3people
+  source: 現場の略語・3人組制限
+  utterance: "EMP-001さんとEMP-002さんとEMP-003さんを同じ早番に入れないで"
+  draft:
+    type: pair
+    shift_ids: ["早番"]
+    strength_hint: "絶対"
+  expect:
+    kind: candidates
+    rule_type: staffing
+    strength: "絶対"
+    at_most: 1
+
+- id: staff_rookie_night_max1
+  source: 池上 2Shift No.15
+  utterance: "夜勤に新人は各日1人までにして"
+  draft:
+    type: staffing
+    shift_ids: ["夜勤"]
+    roles: ["新人"]
+    at_most: 1
+  expect:
+    kind: candidates
+    rule_type: staffing
+    at_most: 1
+
+- id: staff_medical_skill_night_min2
+  source: 愛知事例集 No.58 / 池上 No.14
+  utterance: "夜勤には医療的ケアできる人を2人以上入れて"
+  draft:
+    type: staffing
+    shift_ids: ["夜勤"]
+    skills: ["medical"]
+    at_least: 2
+  expect:
+    kind: candidates
+    rule_type: staffing
+    at_least: 2
+
+- id: staff_date_specific_need
+  source: 池上 2Shift No.16
+  utterance: "6日は早番を12人以上・14人以下にして"
+  draft:
+    type: staffing
+    shift_ids: ["早番"]
+    dates: [6]
+    at_least: 12
+    at_most: 14
+  expect:
+    kind: candidates
+    rule_type: staffing
+    dates: [6]
+
+- id: staff_leader_weekend_min1
+  source: 台湾 60人 No.37
+  utterance: "土日は主任をできれば日勤に1人以上入れて"
+  draft:
+    type: staffing
+    shift_ids: ["日勤"]
+    roles: ["主任"]
+    weekdays: [0, 6]
+    at_least: 1
+    strength_hint: "できれば"
+  expect:
+    kind: candidates
+    rule_type: staffing
+    strength: "できれば"
+
+- id: set_min_interval_11h
+  source: 看護協会 11項目① / Q6代表例
+  utterance: "勤務と勤務の間を11時間空けて"
+  draft:
+    type: setting
+    setting_field: min_interval_h
+  expect:
+    kind: setting
+    setting_field: min_interval_h
+
+- id: set_min_interval_12h
+  source: 愛知事例集 No.55
+  utterance: "前の勤務の終わりから次の勤務まで12時間以上あけて"
+  draft:
+    type: setting
+    setting_field: min_interval_h
+  expect:
+    kind: setting
+    setting_field: min_interval_h
+
+- id: set_max_run_5
+  source: 看護協会 11項目⑤
+  utterance: "施設全体の連続勤務は5日までにして"
+  draft:
+    type: setting
+    setting_field: max_run
+  expect:
+    kind: setting
+    setting_field: max_run
+
+- id: set_night_max_8
+  source: 看護協会 11項目③
+  utterance: "夜勤の上限を月8回にして"
+  draft:
+    type: setting
+    setting_field: night_max
+  expect:
+    kind: setting
+    setting_field: night_max
+
+- id: unsup_mentor_rookie_same_shift
+  source: 愛知事例集 No.61
+  utterance: "新人のEMP-004さんと指導者のEMP-001さんを同じ日の同じ勤務に入れて"
+  draft:
+    type: unsupported
+    unsupported_kind: pair_same
+  expect:
+    kind: unsupported
+    unsupported_kind: pair_same
+
+- id: unsup_sliding_7d_hours
+  source: 愛知事例集 No.60
+  utterance: "どの連続する7日間を取っても勤務は週32時間以内に抑えて"
+  draft:
+    type: unsupported
+    unsupported_kind: sliding_window
+  expect:
+    kind: unsupported
+    unsupported_kind: sliding_window
+
+- id: unsup_night_nap_2h
+  source: 看護協会 11項目⑦ No.53
+  utterance: "夜勤中に連続で2時間仮眠が取れるように回して"
+  draft:
+    type: unsupported
+    unsupported_kind: intra_shift
+  expect:
+    kind: unsupported
+    unsupported_kind: intra_shift
+
+- id: unsup_quadratic_penalty
+  source: 台湾 60人 No.40
+  utterance: "公休目標からのずれが大きいほど2乗で重く罰点を付けて"
+  draft:
+    type: unsupported
+    unsupported_kind: nonlinear_weight
+  expect:
+    kind: unsupported
+    unsupported_kind: nonlinear_weight
+
+- id: unsup_staff_87_all
+  source: 台湾 60人 No.42
+  utterance: "病棟の職員87人全員を1つの勤務表でまとめて組んで"
+  draft:
+    type: unsupported
+    unsupported_kind: capacity_limit
+  expect:
+    kind: unsupported
+    unsupported_kind: capacity_limit
+
+# ---------------------------------------------------------------- 測り直し専用（holdout）
+# 2026-11-21、Q6 の実測で外れた文を見たあと、プロンプトを直す「前」に書いた文。直した結果を、この組に合わせて調整しない。
+
+- id: h_staff_nurse_day_min1
+  holdout: true
+  source: 言い換え（職種の必要人数）
+  utterance: "日勤には看護師を毎日1人は置いて"
+  draft:
+    type: staffing
+    shift_ids: ["日勤"]
+    roles: ["看護師"]
+    at_least: 1
+  expect:
+    kind: candidates
+    rule_type: staffing
+    at_least: 1
+
+- id: h_staff_rookie_early_max2
+  holdout: true
+  source: 言い換え（新人の上限）
+  utterance: "早番に入る新人は2人を超えないように"
+  draft:
+    type: staffing
+    shift_ids: ["早番"]
+    roles: ["新人"]
+    at_most: 2
+  expect:
+    kind: candidates
+    rule_type: staffing
+    at_most: 2
+
+- id: h_staff_medical_late_min1
+  holdout: true
+  source: 言い換え（技能の必要人数・現場の言い方）
+  utterance: "遅番に医療的ケアのできる職員を最低1名"
+  draft:
+    type: staffing
+    shift_ids: ["遅番"]
+    skills: ["medical"]
+    at_least: 1
+  expect:
+    kind: candidates
+    rule_type: staffing
+    at_least: 1
+
+- id: h_cnt_night_min2
+  holdout: true
+  source: 言い換え（個人の下限）
+  utterance: "夜勤は一人あたり月2回以上は入って"
+  draft:
+    type: count
+    shift_ids: ["夜勤"]
+    at_least: 2
+  expect:
+    kind: candidates
+    rule_type: count
+    at_least: 2
+
+- id: h_cnt_late_max8
+  holdout: true
+  source: 言い換え（個人の上限）
+  utterance: "遅番は一人月8回を上限にして"
+  draft:
+    type: count
+    shift_ids: ["遅番"]
+    at_most: 8
+  expect:
+    kind: candidates
+    rule_type: count
+    at_most: 8
+
+- id: h_bal_early_spread
+  holdout: true
+  source: 言い換え（「3回以上の差がつかない」= 差2以内）
+  utterance: "早番の回数は人によって3回以上の差がつかないように"
+  draft:
+    type: balance
+    shift_ids: ["早番"]
+    max_spread: 2
+  expect:
+    kind: candidates
+    rule_type: balance
+    max_spread: 2
+
+- id: h_bal_no_number_ask
+  holdout: true
+  source: 数を言っていない（聞き返すのが正しい）
+  utterance: "土日の休みが特定の人に偏らないようにして"
+  draft:
+    type: balance
+    shift_ids: ["公休"]
+    weekdays: [0, 6]
+  expect:
+    kind: ask
+
+- id: h_succ_early_gap
+  holdout: true
+  source: 言い換え（勤務と勤務の間の日数の上限）
+  utterance: "早番と早番の間が5日以上あかないようにして"
+  draft:
+    type: succession
+    pattern: [["早番"], ["日勤", "遅番", "夜勤", "休"], ["日勤", "遅番", "夜勤", "休"], ["日勤", "遅番", "夜勤", "休"], ["日勤", "遅番", "夜勤", "休"], ["日勤", "遅番", "夜勤", "休"]]
+  expect:
+    kind: candidates
+    rule_type: succession
+    pattern_len: 6
+
+- id: h_succ_three_nights
+  holdout: true
+  source: 言い換え（同じ勤務の連続）
+  utterance: "夜勤は3回続けないで"
+  draft:
+    type: succession
+    pattern: [["夜勤"], ["夜勤"], ["夜勤"]]
+  expect:
+    kind: candidates
+    rule_type: succession
+    pattern_len: 3
+
+- id: h_occ_two_day_off_min2
+  holdout: true
+  source: 言い換え（連休の回数）
+  utterance: "2連休を月2回は作って"
+  draft:
+    type: occurrence
+    pattern: [["休"], ["休"]]
+    at_least: 2
+  expect:
+    kind: candidates
+    rule_type: occurrence
+    pattern_len: 2
+    at_least: 2
+
+- id: h_occ_sunday_start_max1
+  holdout: true
+  source: 言い換え（曜日から始まる連休の上限）
+  utterance: "日曜から始まる2連休は月1回まで"
+  draft:
+    type: occurrence
+    pattern: [["公休"], ["公休"]]
+    start_weekdays: [0]
+    at_most: 1
+  expect:
+    kind: candidates
+    rule_type: occurrence
+    start_weekdays: [0]
+    at_most: 1
+
+- id: h_unsup_sliding_5d
+  holdout: true
+  source: 書けない（任意の5日間の集計）
+  utterance: "どの5日間をとっても夜勤は2回までにして"
+  draft:
+    type: unsupported
+    unsupported_kind: sliding_window
+  expect:
+    kind: unsupported
+    unsupported_kind: sliding_window
+
+- id: h_unsup_always_same
+  holdout: true
+  source: 書けない（2人を同じ勤務にそろえる）
+  utterance: "EMP-005さんとEMP-006さんはいつも同じ勤務にして"
+  draft:
+    type: unsupported
+    unsupported_kind: pair_same
+  expect:
+    kind: unsupported
+    unsupported_kind: pair_same

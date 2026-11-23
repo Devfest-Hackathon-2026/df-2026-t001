@@ -93,7 +93,7 @@ function DayDetail({ s, date, sum, go, openStaff, showDate }: { showDate?: boole
             {ab.map((a) => <div key={a.id} class="small" style="text-decoration:line-through">{staffById(a.staffId).name.split(' ')[0]}</div>)}
             {!act.length && <span class="chip bad">欠員</span>}</td>; })}</tr>)}
       </tbody></table></div>
-      {sum.issues.length > 0 && <><div class="sec-title" style="margin:0">配置の検証</div><ul class="issues">{sum.issues.slice(0, 5).map((i, k) => <li key={k}><span class={`chip ${i.kind === 'skill' ? 'bad' : 'warn'}`}>{i.kind === 'skill' ? 'スキル' : '人数'}</span> {issueTime(i)} {i.text}</li>)}</ul></>}
+      {sum.issues.length > 0 && <><div class="sec-title" style="margin:0">人数とスキルのチェック</div><ul class="issues">{sum.issues.slice(0, 5).map((i, k) => <li key={k}><span class={`chip ${i.kind === 'skill' ? 'bad' : 'warn'}`}>{i.kind === 'skill' ? 'スキル' : '人数'}</span> {issueTime(i)} {i.text}</li>)}</ul></>}
       {sum.issues.length === 0 && vacs.length === 0 && sum.eventShort === 0 && <p class="muted">この日は必要人数・休憩・スキルの検証で問題ありません。</p>}
       {form && <EventForm date={date} event={form.ev} onClose={() => setForm(null)} />}
     </div>

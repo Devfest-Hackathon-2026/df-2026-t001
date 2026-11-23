@@ -1,0 +1,25 @@
+{
+  "id": "u1-32",
+  "uncovered_no": 32,
+  "dataset": "taiwan-60",
+  "source": "台湾 60人",
+  "title": "連続勤務5日の軟回避（全員なるべく4連勤まで）",
+  "category": "部品で書ける",
+  "utterance": "5連勤はなるべく避けて（4連勤までにしたい）",
+  "runnable": true,
+  "rules": [
+    {
+      "id": "u1-32",
+      "type": "succession",
+      "label": "連続勤務はなるべく4日まで",
+      "strength": "強く",
+      "max_run": 4
+    }
+  ],
+  "verify": {
+    "kind": "max_run",
+    "max_run": 4,
+    "use_history": true,
+    "description": "前月履歴を含め、5日以上連続勤務する窓（長さ5）の超過件数を数える"
+  }
+}
