@@ -18,6 +18,8 @@ from pydantic import BaseModel
 
 PRO_MODEL = os.getenv("GEMINI_PRO_MODEL", "gemini-3.1-pro-preview")
 FAST_MODEL = os.getenv("GEMINI_FAST_MODEL", "gemini-3-flash-preview")
+# シフト作成チャットでルールを足す翻訳（translate-inline）。Pro は 25 秒を超えて 504 になることがあったため Flash で回す（2026-11-24）
+RULE_MODEL = os.getenv("GEMINI_RULE_MODEL", "gemini-3.8-flash")
 CHAT_BUDGET = float(os.getenv("CHAT_BUDGET_SEC", "40"))      # チャット全体（Gemini＋ツール）の締め切り（秒）。Cloud Run は 60 秒
 CALL_TIMEOUT = 25.0                                            # 1回の Gemini 呼び出しの上限（秒）
 MIN_CALL_SEC = 4.0                                             # 残りがこれ未満なら、次の Gemini 呼び出しはしない

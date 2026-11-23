@@ -172,7 +172,7 @@ def main() -> None:
     Path(f"{out}.json").write_text(json.dumps({"at": stamp, "summary": summary, "rows": rows}, ensure_ascii=False, indent=1))
 
     pct = lambda a, b: f"{a}/{b}（{100 * a // b if b else 0}%）"  # noqa: E731
-    md = [f"# Q6 評価用の文を本物の LLM で（{stamp}・{os.getenv('GEMINI_PRO_MODEL', '既定のモデル')}）", "",
+    md = [f"# Q6 評価用の文を本物の LLM で（{stamp}・{os.getenv('GEMINI_RULE_MODEL', 'gemini-3.8-flash')}）", "",
           "| | " + " | ".join(summary) + " |", "|---|" + "---|" * len(summary)]
     for key, lbl in [("type_ok", "型が合った"), ("items_ok", "項目まで合った")]:
         md.append(f"| {lbl} | " + " | ".join(pct(v[key], v["n"]) for v in summary.values()) + " |")

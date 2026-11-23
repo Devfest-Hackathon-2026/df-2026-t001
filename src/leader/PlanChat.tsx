@@ -215,6 +215,7 @@ function RuleResult({ month, onDone }: { month: string; onDone: (t: string) => v
   if (!c || c.month !== month) return null;
   return <p class="small rc-foot">
     {c.state === 'solving' ? '作り直し中…' : c.state === 'done' ? (c.count ? `作り直しました。変更${c.count}件` : '作り直しました。変更はありません') : c.message ?? '足しました'}
+    {c.state === 'done' && (c.broken ?? 0) > 0 && `（この決まりは守りきれていません：${c.broken}件）`}
     {canUndoRule() && c.state !== 'solving' && <> <button class="link" onClick={() => onDone(undoChatRule())}>元に戻す</button></>}
   </p>;
 }

@@ -26,6 +26,7 @@ export function Home({ s, c }: { s: State; c: Ctx }) {
   const working = !!a && a.status !== 'absent';
   const next = (() => { for (let i = 1; i <= 42; i++) { const d = addDays(today, i); const x = myAssign(s, d); if (x && x.status !== 'absent') return x; } return undefined; })();
   const unread = s.notices.filter((n) => n.to === MY_ID && !n.read);
+  const myPending = s.requests.filter((r) => r.staffId === MY_ID && r.status === 'pending');
   const hc = s.health.find((h) => h.staffId === MY_ID && h.date === today);
   const blocks = row?.blocks ?? [];
   const cur = blocks.findIndex((b) => now >= b.start && now < b.end);
@@ -36,6 +37,7 @@ export function Home({ s, c }: { s: State; c: Ctx }) {
     <div class="pg">
       <h1 class="ptitle">ホーム</h1>
       <button class="btn pri block absent-cta" onClick={() => setPickK(true)}><Icon n="event_busy" />休み・遅刻を連絡</button>
+      {myPending.map((r) => <div key={r.id} class="req-st"><Icon n="hourglass_top" sm /><span>{fmtMD(r.date)} {myAssign(s, r.date)?.shift ?? ''}の{r.kind}：<b>リーダー承認待ち</b></span></div>)}
       {working && a ? (
         <>
           <section class="card">
@@ -87,7 +89,7 @@ export function Home({ s, c }: { s: State; c: Ctx }) {
       {pickK && <Modal title="何を連絡しますか？" onClose={() => setPickK(false)}>
         <div class="stack" style="gap:8px">{([['休み', 'event_busy', '勤務日を休む'], ['遅刻', 'schedule', '出勤が遅れる'], ['早退', 'logout', '早めに帰る']] as const).map(([k, ic, h]) => <button key={k} class="listbtn" onClick={() => { setPickK(false); setSheet(k); }}><span><Icon n={ic} /> <b style="font-weight:500">{k}</b> <span class="small">{h}</span></span><Icon n="chevron_right" /></button>)}</div>
       </Modal>}
-      {sheet && <AiSheet s={s} kind={sheet} date0={working && a && !onTail ? a.date : next?.date} onClose={() => setSheet(null)} onSent={() => { setSheet(null); c.toast('リーダーに送りました'); }} />}
+      {sheet && <AiSheet s={s} kind={sheet} date0={working && a && !onTail ? a.date : next?.date} onClose={() => setSheet(null)} onSent={(t) => { setSheet(null); c.toast(t ?? 'リーダーに送りました'); }} />}
 
       <section class="card">
         <div class="row spread"><h2 class="h2">お知らせ</h2><button class="link" onClick={c.openNotices}>すべて見る</button></div>

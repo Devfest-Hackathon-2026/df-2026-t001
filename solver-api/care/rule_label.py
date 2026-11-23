@@ -214,11 +214,13 @@ def rule_label(
         return f"{subj}は{when_p}{what}"
 
     if rtype == "succession":
+        # 「全員は…」は不自然なので、全員のときは主語を書かない
+        subj_p = "" if subj == "全員" else f"{subj}は"
         if rule.max_run is not None:
-            return f"{subj}は連続勤務{rule.max_run}日まで"
+            return f"{subj_p}連続勤務{rule.max_run}日まで" if subj_p else f"連続勤務は{rule.max_run}日まで"
         pat_str = _pattern_ja(rule.pattern or (), shift_names, work_ids)
-        verb = "を置かない" if rule.forbid else "を並べる"
-        return f"{subj}は{pat_str}{verb}"
+        verb = "の並びにしない" if rule.forbid else "の並びにする"
+        return f"{subj_p}{pat_str}{verb}"
 
     if rtype == "count":
         sh = _shifts_ja(rule.shifts, shift_names, work_ids)
@@ -229,6 +231,9 @@ def rule_label(
     if rtype == "balance":
         sh = _shifts_ja(rule.shifts, shift_names, work_ids)
         when_p = f"{when}の" if when else ""
+        ids = rule.shifts.ids
+        if subj == "全員" and ids and not ({OFF, PUBLIC_OFF} & set(ids)):
+            subj = f"{sh}に入れる人"     # 差をそろえるのはその勤務に入れる人だけ（Balance.members）
         return f"{subj}の{when_p}{sh}の差は{rule.max_spread}回以内"
 
     if rtype == "occurrence":

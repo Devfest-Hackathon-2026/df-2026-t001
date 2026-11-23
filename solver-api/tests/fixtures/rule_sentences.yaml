@@ -64,6 +64,17 @@
     rule_type: succession
     pattern_len: 3
 
+- id: succ_night_two_days_off_plain
+  source: 2026-11-24 本物の Gemini で取り違えた言い方（夜勤→勤務の2日になった）
+  utterance: "夜勤の後は二日休みにして"
+  draft:
+    type: succession
+    pattern: [["夜勤"], ["休"], []]
+  expect:
+    kind: candidates
+    rule_type: succession
+    pattern_len: 3
+
 - id: succ_max_3_consec_early
   source: 池上 2Shift No.07
   utterance: "早番を4日続けて入れないで"
@@ -206,6 +217,20 @@
     kind: candidates
     rule_type: balance
     max_spread: 2
+
+- id: bal_weekend_night_spread1
+  source: 2026-11-24 本物の Gemini で確かめた言い方
+  utterance: "土日の夜勤の回数は、人の間の差を1回までにそろえて"
+  draft:
+    type: balance
+    shift_ids: ["夜勤"]
+    weekdays: [0, 6]
+    max_spread: 1
+  expect:
+    kind: candidates
+    rule_type: balance
+    max_spread: 1
+    weekdays: [0, 6]
 
 - id: bal_weekend_pub_off_spread1
   source: 台湾 60人 No.39

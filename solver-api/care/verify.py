@@ -111,7 +111,8 @@ def verify_monthly(fac: Facility, month: Month, cells: dict[str, list[str]], rul
                         bump(r.id)
         elif isinstance(r, Balance):
             kinds = r.shifts.kinds(work_ids)
-            cnts = [sum(1 for d in days if _match_kinds(cells, p.staff_id, d, kinds, last_prev_of[p.staff_id], ake_ids)) for p in people]
+            cnts = [sum(1 for d in days if _match_kinds(cells, p.staff_id, d, kinds, last_prev_of[p.staff_id], ake_ids))
+                    for p in r.members(people, work_ids)]
             if cnts and max(cnts) - min(cnts) > r.max_spread:
                 bump(r.id)
         elif isinstance(r, Occurrence):

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { composeEmployee, type ComposeIn } from '../core/aiintent';
 import { proposeFromText } from '../core/shiftmaker';
 import type { State } from '../core/store';
-import { askShiftMaker } from '../core/store';
+import { askShiftMaker, cancelProposal, confirmProposal } from '../core/store';
 import { MY_ID, SHIFTS, TASKS, TASK_GROUPS, unitName } from '../core/facility';
 import { buildDay } from '../core/roster';
 import { addDays, fmtHM, fmtMD, fmtMin } from '../core/dates';
@@ -31,7 +31,8 @@ export function ActionGrid({ onPick }: { onPick: (k: K) => void }) {
   );
 }
 
-export function AiSheet({ s, kind, date0, onClose, onSent }: { s: State; kind: K; date0?: string; onClose: () => void; onSent: () => void }) {
+export function AiSheet({ s, kind, date0, onClose, onSent }: { s: State; kind: K; date0?: string; onClose: () => void; onSent: (msg?: string) => void }) {
+  const [sentId, setSentId] = useState<string | null>(null);
   const [month, setMonth] = useState((date0 ?? s.today).slice(0, 7) + '-01');
   const [dates, setDates] = useState<string[]>(date0 ? [date0] : []);
   const [mins, setMins] = useState<number | null>(null); // 遅刻の分数
@@ -86,7 +87,27 @@ export function AiSheet({ s, kind, date0, onClose, onSent }: { s: State; kind: K
   // 早退時刻候補：その日の業務ブロックの開始（夜勤は日付をまたがない範囲）
   const blockTimes = (row?.blocks ?? []).filter((b) => b.kind !== 'break' && b.kind !== 'nap' && b.start > (asg ? SHIFTS[asg.shift].start : 0));
 
-  const send = () => { askShiftMaker(MY_ID, shown); onSent(); };
+  const send = () => { const id = askShiftMaker(MY_ID, shown); if (id) setSentId(id); else onSent(); };
+  // 送ったあと：同じシートの中で読み取り結果を見せ、1回の確認で確定する（チャットに確認の残りを作らない）
+  const sentMsg = sentId ? s.messages.find((m) => m.id === sentId) : undefined;
+  if (sentId) {
+    const p = sentMsg?.proposal; const known = p ? p.items.filter((i) => i.type !== 'unknown') : [];
+    const review = known.some((i) => i.type === 'request' && i.needsApproval);
+    const fix = () => { if (p?.state === 'draft') cancelProposal(sentId); setSentId(null); };
+    const ok = () => { confirmProposal(sentId, MY_ID); onSent(review ? 'リーダーに送りました（承認待ち）' : known.every((i) => i.type === 'avail' || i.type === 'dayoff') ? '希望として登録しました' : 'シフトに反映しました'); };
+    return (
+      <Modal title={`${title}：この内容で送りますか？`} onClose={fix} footer={<><button class="btn" onClick={fix}>直す</button><button class="btn pri" disabled={!p || p.state !== 'draft' || !known.length} onClick={ok}>この内容で送る</button></>}>
+        {!p ? <p class="muted">内容を確認しています…</p> : !known.length ? <p>{sentMsg?.text}</p> : (
+          <div class="stack" style="gap:8px">{known.map((it, i) => (
+            <div key={i} class="card" style="padding:12px">
+              <b style="font-weight:500">{it.normalized}</b>
+              {it.type === 'request' && it.before && <div class="ba" style="margin-top:6px"><div><span class="small">今</span><div>{it.before}</div></div><Icon n="arrow_forward" sm /><div><span class="small">送ったあと</span><div><b>{it.after}</b></div></div></div>}
+              {it.impact && <div class="small" style="margin-top:4px">{it.impact}</div>}
+              {it.type === 'request' && <span class={`chip ${it.needsApproval ? 'warn' : 'ok'}`} style="margin-top:6px">{it.needsApproval ? 'リーダーの承認が必要' : 'すぐ反映'}</span>}
+            </div>))}</div>)}
+      </Modal>
+    );
+  }
   return (
     <Modal title={title} onClose={onClose} footer={<><button class="btn" onClick={onClose}>やめる</button><button class="btn pri" disabled={!sentence} onClick={send}>シフト作成君に送る</button></>}>
       <div class="stack">
@@ -144,7 +165,7 @@ export function AiSheet({ s, kind, date0, onClose, onSent }: { s: State; kind: K
           </div>
         )}
         <div class="sum"><div class="small">シフト作成君に送る内容</div><div>{shown || '選ぶとここに文章が表示されます'}</div>{aiText ? <div class="small" style="margin-top:4px"><Icon n="auto_awesome" sm /> AIが作成</div> : busy && sentence ? <div class="small" style="margin-top:4px;opacity:.6">AIで整えています…</div> : null}</div>
-        <p class="small">送ると読み取り結果が表示されます。内容を確認して{kind === '入れる日' ? '「この内容で反映」を押すと登録されます（リーダーの承認は不要です）。' : '「この内容で反映」を押すまで、シフトは変わりません。'}</p>
+        <p class="small">次の画面で内容を確かめてから送ります。</p>
         {void unitName}{void ymd}{void addDays}
       </div>
     </Modal>

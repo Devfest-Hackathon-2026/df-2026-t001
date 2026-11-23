@@ -123,7 +123,8 @@ function persist(s: State): State {
   return s;
 }
 /** デモの時計：now が日付をまたいだら today も進める（today と now の日付がずれないように） */
-const withToday = (s: State): State => (stampDay(s.now) > s.today ? { ...s, today: stampDay(s.now) } : s);
+// function 宣言にする（const だと、上の load() から呼んだとき初期化前で例外になり、保存した状態を読まずに初期データに戻っていた）
+function withToday(s: State): State { return stampDay(s.now) > s.today ? { ...s, today: stampDay(s.now) } : s; }
 function commit(next: State) { const n = withToday({ ...next, now: addMinutes(next.now, 1) }); setSimNow(n.now); state = persist(n); subs.forEach((f) => f()); }
 if (typeof window !== 'undefined') window.addEventListener('storage', (e) => { if (e.key === KEY && e.newValue) { try { state = withToday(JSON.parse(e.newValue)); setSimNow(state.now); subs.forEach((f) => f()); } catch { /* ignore */ } } });
 
@@ -196,7 +197,7 @@ function replyToPendingOffer(staffId: string, text: string): boolean {
   set((s) => ({ messages: [...s.messages, { id: uid('M'), thread: `ai:${staffId}`, from: staffId, text: text.trim(), at: nowStamp() }] }));
   respondOffer(v.id, staffId, yes); return true;
 }
-export function askShiftMaker(staffId: string, text: string) {
+export function askShiftMaker(staffId: string, text: string): string | undefined {
   if (!text.trim()) return;
   if (replyToPendingOffer(staffId, text)) return;
   const known = proposeFromText(text, staffId, state.today, state.assignments, state.collection.month, state.collection.deadline);
@@ -207,7 +208,7 @@ export function askShiftMaker(staffId: string, text: string) {
     const a: ChatMessage = unknown ? { id: aid, thread: `ai:${staffId}`, from: 'ai', text: '内容を確認しています…', at: nowStamp() } : { id: aid, thread: `ai:${staffId}`, from: 'ai', text: known.summary, at: nowStamp(), proposal: known };
     return { messages: [...s.messages, u, a] };
   });
-  if (!unknown) return;
+  if (!unknown) return aid;
   // ルールで読めない言葉は Gemini に分類してもらい、定型の文に直して同じ提案の流れに乗せる
   const patch = (fn: (m: ChatMessage) => ChatMessage) => set((s) => ({ messages: s.messages.map((m) => (m.id === aid ? fn(m) : m)) }));
   askEmployee(text.trim(), state.today).then((i) => {
@@ -215,6 +216,7 @@ export function askShiftMaker(staffId: string, text: string) {
     if (p && !p.items.every((x) => x.type === 'unknown')) patch((m) => ({ ...m, text: p.summary, proposal: { ...p, raw: text.trim() } }));
     else patch((m) => ({ ...m, text: i.reply || known.summary, proposal: known }));
   }).catch((e: Error) => patch((m) => ({ ...m, text: `${e.message}\n日付と内容を入れて、もう一度送ってください（例：「11/20の夜勤を休みたい」）。`, proposal: known })));
+  return aid;
 }
 export function confirmProposal(msgId: string, staffId: string) {
   set((s) => {
@@ -694,7 +696,11 @@ export const getChatRules = () => chatRules;
 const activeRules = () => chatRules.filter((r) => r.on).map((r) => r.rule);
 
 /** ルールを足して解き直したときの結果（表の上に出す）。元に戻すための、足す前のルールと表 */
-export interface RuleChange { month: string; label: string; state: 'solving' | 'done' | 'kept' | 'failed'; count?: number; cells?: { staffId: string; date: string; before: string; after: string }[]; message?: string }
+export interface RuleChange {
+  month: string; label: string; state: 'solving' | 'done' | 'kept' | 'failed'; count?: number; cells?: { staffId: string; date: string; before: string; after: string }[]; message?: string;
+  /** 足したルールが、作り直した表で守れていない箇所の数（できれば・強く のとき。0=守れた。分からなければ無し） */
+  broken?: number;
+}
 let ruleChange: RuleChange | null = null;
 let ruleUndo: { rules: ChatRule[]; plan: Plan | undefined; month: string } | null = null;
 export const getRuleChange = () => ruleChange;
@@ -711,7 +717,7 @@ export function addChatRule(c: RuleCand, month: string): string {
     ruleChange = null;
     return `「${label}」を足しました。次にシフトを作るときから使います`;
   }
-  startSolver(month, plan.stats.nightMax, { label });
+  startSolver(month, plan.stats.nightMax, { label, id: rule.id });
   return `「${label}」を足して、今の表をもとに作り直しています`;
 }
 /** 止める（次の作成から外す）・再開する */
@@ -734,7 +740,7 @@ export function undoChatRule(): string {
 let solving: { month: string } | null = null;
 let solveCtl: AbortController | null = null;
 export const planSolving = () => solving;
-function startSolver(month: string, nightMax?: number, resolve?: { label: string }) {
+function startSolver(month: string, nightMax?: number, resolve?: { label: string; id: string }) {
   solveCtl?.abort();
   const base = state.plan;
   if (!base || base.month !== month || !solverEnabled()) { solving = null; solveCtl = null; return; }
@@ -758,6 +764,8 @@ function startSolver(month: string, nightMax?: number, resolve?: { label: string
     rules: activeRules(),
     ...(resolve ? { baseline: cellsOf(base.draft, month, nDays) } : {}),
   };
+  // ソルバーはチャットのルールを送った順に r-ui-0, r-ui-1 … と呼ぶ。足したルールが守れたかを、送ったときの順番の id で見る
+  const ruleIdx = resolve ? chatRules.filter((r) => r.on).findIndex((r) => r.id === resolve.id) : -1;
   // 変わった勤務はソルバーの changed を使う。無ければ（古いソルバー）前の表と返ってきた表をここで比べる
   const changedOf = (res: SolveInlineRes): RuleChange => {
     const bl = ctx.baseline ?? {};
@@ -765,8 +773,9 @@ function startSolver(month: string, nightMax?: number, resolve?: { label: string
       const b = bl[sid]?.[i] ?? ''; const a = v === '休' ? '' : v;
       return b === a ? [] : [{ staff_id: sid, day: i + 1, before: b, after: a }];
     }));
+    const broken = !res.soft_broken || ruleIdx < 0 ? undefined : res.soft_broken.filter((b) => b.rule_id === `r-ui-${ruleIdx}`).reduce((t, b) => t + b.count, 0);
     return {
-      month, label: resolve!.label, state: 'done', count: list.length,
+      month, label: resolve!.label, state: 'done', count: list.length, broken,
       cells: list.map((c) => ({ staffId: c.staff_id, date: `${month}-${String(c.day).padStart(2, '0')}`, before: c.before || '休', after: c.after || '休' })),
     };
   };

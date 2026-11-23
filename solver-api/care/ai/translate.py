@@ -134,6 +134,10 @@ SYSTEM = """あなたは介護施設の勤務表のルールを書き起こす�
   言葉に数が無いときだけ空にする（推測で埋めない）。
 - 勤務と勤務の間の日数（「AとAの間を◯日以上空けない」「Aのあと◯日はBを入れない」「◯回続けない」）は、succession の pattern で書ける。
   unsupported の sliding_window は「どの◯日間をとっても合計◯回・◯時間以内」のように、期間をずらしながら合計を数える条件だけ。
+- 「翌日が明けになる勤務」（一覧に出す。ふつうは夜勤）の翌日は、自動で明け（pattern では「休」）になり勤務は入らない。
+  そのため「夜勤の後に勤務を置かない」「夜勤明けは休み」はすでに守られている。pattern を [[夜勤], [勤務…]] の2日にしない。
+  「夜勤の後は二日休み」「夜勤明けの次の日も休み」「夜勤の翌々日まで勤務を入れない」は、明けを1日目と数えて
+  succession の pattern [["夜勤"], ["休"], []]（夜勤→休→勤務を置かない。[] はすべての勤務）で書く。
 - 連休の回数は、前後の日に条件があっても occurrence で書ける：pattern の各日に「その日に入ってよい勤務IDと休み」を並べ、
   始まる曜日は start_weekdays、始まる日付は dates に入れる（例：金曜に夜勤の無い土日連休 → 金曜は夜勤以外の勤務と休み、土日は 公休）。"""
 
@@ -168,8 +172,10 @@ def draft(llm: LLM, fac: Facility, text: str, *, who: str | None, cell: str | No
     skills = sorted({sk for s in getattr(fac, "staff", ()) for sk in s.skills})
     text = text.strip()
     task_line = "（日次業務ルールはここでは対象外）" if inline else (", ".join(f"{k}={v}" for k, v in tasks.items()) or "なし")
+    ake = list(fac.ake_shift_ids()) if hasattr(fac, "ake_shift_ids") else []
     prompt = (
         f"勤務区分のID: {', '.join(shifts)}（ほかに count/balance/occurrence では「{PUBLIC_OFF}」が使える）\n"
+        f"翌日が明けになる勤務: {', '.join(ake) or 'なし'}\n"
         f"役割の例: {', '.join(roles) or 'なし'}\n技能キー: {', '.join(skills) or 'なし'}\n"
         f"業務のキー: {task_line}\n"
         f"{('指したセル: ' + cell) if cell else '指したセル: なし'}\n{('対象の人: ' + who) if who else '対象の人: 指定なし'}\n"
@@ -238,6 +244,9 @@ def validate(d: RuleDraft, fac, *, pair_ids: list[str] | None = None, inline: bo
                 errs.append(f"勤務の並びの長さは2〜{MAX_PATTERN_LEN}日にしてください")
         elif not d.shift_ids or not d.after_shift_ids:
             errs.append("勤務の連なり（Aのあとにbを置かない）が読み取れませんでした")
+        if d.max_run is None and _after_ake_only(d, fac):
+            errs.append("夜勤の翌日はもともと明け（休み）で勤務は入りません。"
+                        "「夜勤明けの次の日も休みにして」のように、明けの次の日を言ってください")
 
     elif d.type == "count":
         if d.at_least is None and d.at_most is None and d.target is None:
@@ -293,6 +302,22 @@ def validate(d: RuleDraft, fac, *, pair_ids: list[str] | None = None, inline: bo
             errs.append("時間帯の開始が終了より後です")
 
     return errs
+
+
+def _after_ake_only(d: RuleDraft, fac) -> bool:
+    """「明けになる勤務のあとに勤務を置かない」2日の並び。明けで最初から守られるので、ルールとして意味がない。"""
+    ake = set(fac.ake_shift_ids()) if hasattr(fac, "ake_shift_ids") else set()
+    if not ake:
+        return False
+    if d.pattern:
+        if len(d.pattern) != 2:
+            return False
+        first, second = d.pattern
+    else:
+        first, second = d.shift_ids, d.after_shift_ids
+    work = set(fac.work_shift_ids()) if hasattr(fac, "work_shift_ids") else set(WORK_SHIFTS)
+    second_work = not second or set(second) <= work
+    return bool(first) and set(first) <= ake and second_work
 
 
 # ---------------------------------------------------------------- 候補

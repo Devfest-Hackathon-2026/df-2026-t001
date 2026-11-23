@@ -19,7 +19,7 @@ from . import translate as tr
 from . import planintent as pi
 from .armor import BLOCK_MESSAGE, ArmoredLLM, ArmoredMasker, ArmorBlocked, make_armor
 from .judge import Judge
-from .llm import CHAT_BUDGET, FAST_MODEL, PRO_MODEL, AIError, LLM
+from .llm import CHAT_BUDGET, FAST_MODEL, PRO_MODEL, RULE_MODEL, AIError, LLM
 from .privacy import Masker, as_data, pseudonymize
 
 JST = timezone(timedelta(hours=9))
@@ -221,7 +221,7 @@ class AIService:
         if sid and day and current and sid in current:
             cell = f"{sid} / {month}-{day:02d}（{tr.WD[mo.weekday(day)]}）/ いま {current[sid][day - 1] or '休'}"
         try:
-            d, usage = tr.draft(self.llm, fac, safe, who=sid, cell=cell, model=PRO_MODEL, inline=True)
+            d, usage = tr.draft(self.llm, fac, safe, who=sid, cell=cell, model=RULE_MODEL, inline=True)
         except ArmorBlocked as e:
             self._blocked("inline", "translate_inline", e)
         except AIError as e:
@@ -232,7 +232,7 @@ class AIService:
             self._log("inline", "translate_inline", usage, rule_type=d.type)
             self.guard(ip)
             try:
-                d, usage = tr.draft(self.llm, fac, safe, who=sid, cell=cell, model=PRO_MODEL, inline=True, retry_note=tr.RETRY_NOTE)
+                d, usage = tr.draft(self.llm, fac, safe, who=sid, cell=cell, model=RULE_MODEL, inline=True, retry_note=tr.RETRY_NOTE)
             except ArmorBlocked as e:
                 self._blocked("inline", "translate_inline", e)
             except AIError as e:

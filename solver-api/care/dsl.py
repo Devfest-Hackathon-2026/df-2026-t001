@@ -369,6 +369,16 @@ class Balance(RuleBase):
     days: DaySel = Field(default_factory=DaySel)
     max_spread: int
 
+    def members(self, staff: Sequence["StaffMember"], work_shifts: Sequence[str] = WORK_SHIFTS) -> list["StaffMember"]:
+        """差をそろえる人。勤務（夜勤など）の差なら、その勤務に入れる人だけにする。
+        入れない人（いつも0回）を混ぜると「差◯回以内」が「全員◯回以下」に変わってしまうため（2026-11-24 の実測：
+        夜勤に入れない7名を含めた「全員の土日夜勤の差は1回以内」は、絶対にすると作れなかった）。休み・公休の差は全員。"""
+        kinds = self.shifts.kinds(work_shifts)
+        people = [s for s in staff if self.people.match(s)]
+        if not kinds or any(k in (OFF, PUBLIC_OFF) for k in kinds):
+            return people
+        return [s for s in people if any(k in s.shifts for k in kinds)]
+
 
 class Occurrence(RuleBase):
     """人ごとに、月の中で完結する勤務並びの出現回数（重なりは数える・月またぎは数えない）。"""

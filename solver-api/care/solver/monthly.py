@@ -337,7 +337,7 @@ class _Build:
 
     def _add_balance(self, r: Balance):
         kinds = r.shifts.kinds(self.work_ids)
-        people = self._people(r.people)
+        people = r.members(self.staff, self.work_ids)
         days = self._days(r.days)
         if len(people) < 2 or not days:
             return

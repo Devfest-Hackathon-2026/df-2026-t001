@@ -225,7 +225,7 @@ export function Plan({ s, onOpen, go, openStaff, openResident }: { s: State; onO
               {[...spareBy.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, allSp ? 99 : 8).map(([id, ds]) => <div key={id} class="row-li"><span><b style="font-weight:500">{staffById(id).name}</b><span class="small"> {staffById(id).role}</span></span><span class="small">{ds.length}日：{ds.slice(0, 5).map((d) => `${+d.slice(8)}日`).join('、')}{ds.length > 5 ? ' ほか' : ''}</span></div>)}
               {spareBy.size > 8 && <button class="btn sm" style="margin-top:8px" onClick={() => setAllSp(!allSp)}>{allSp ? '閉じる' : `すべて（${spareBy.size}名）`}</button>}
             </details>} />
-          {rc?.state === 'done' && <CheckRow lv="info" title="直前の変更" text={rc.count ? `「${rc.label}」で${rc.count}件` : `「${rc.label}」：変更なし`}
+          {rc?.state === 'done' && <CheckRow lv={(rc.broken ?? 0) > 0 ? 'warn' : 'info'} title="直前の変更" text={`${rc.count ? `「${rc.label}」で${rc.count}件` : `「${rc.label}」：変更なし`}${(rc.broken ?? 0) > 0 ? `。この決まりは、ほかの決まりや人の数と両立せず守りきれていません（${rc.broken}件）。対象や差の数を見直すか、「必ず守る」にすると作れない理由が分かります` : ''}`}
             detail={(rc.cells ?? []).length > 0 && <details class="ck-more" open={rcOpen} onToggle={(e) => setRcOpen((e.target as HTMLDetailsElement).open)}><summary>どこが変わったか</summary>
               {[...rcBy.entries()].slice(0, 12).map(([id, l]) => <div key={id} class="row-li"><b style="font-weight:500">{staffById(id).name}</b><span class="small">{l.slice(0, 4).map((x) => `${fmtMD(x.date)} ${x.before}→${x.after}`).join('、')}{l.length > 4 ? ` ほか${l.length - 4}件` : ''}</span></div>)}
             </details>} />}

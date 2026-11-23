@@ -26,7 +26,19 @@ export interface SolverCtx {
   baseline?: Record<string, string[]>;
 }
 export interface ChangedCell { staff_id: string; day: number; before: string; after: string }
-export interface SolveInlineRes { status: string; wall_ms: number; app_labor_rules?: boolean; cells: Record<string, string[]>; soft_broken?: { rule_id: string; label: string; count: number }[]; explanation?: string[]; changed?: { count: number; cells: ChangedCell[] } }
+export interface SolveInlineRes { status: string; wall_ms: number; app_labor_rules?: boolean; cells: Record<string, string[]>; soft_broken?: { rule_id: string; label: string; count: number }[]; relaxation?: { rule_id: string; label: string; count: number }[]; explanation?: string[]; changed?: { count: number; cells: ChangedCell[] } }
+
+/** 作れなかったときに画面に出す1文。緩める必要があるルールの名前を入れる（説明の1行目だけだと名前が抜ける） */
+export function rejectText(res: Pick<SolveInlineRes, 'relaxation' | 'explanation'>): string | null {
+  const head = res.explanation?.[0];
+  if (head?.includes('「')) return head;   // 「固定した◯件が、「…」と両立しません」のように、名前がすでに入っている
+  const rel = (res.relaxation ?? []).filter((x) => x.count > 0);
+  if (rel.length) {
+    const names = rel.slice(0, 3).map((x) => `「${x.label}」（${x.count}件）`).join('、');
+    return `今のルールのままでは作れません。緩める必要があるルール：${names}${rel.length > 3 ? ` ほか${rel.length - 3}本` : ''}`;
+  }
+  return head ?? null;
+}
 
 export class SolverRejectedError extends Error {
   userMessage: string;
@@ -155,7 +167,8 @@ export async function solveMonth(month: string, ctx: SolverCtx, signal: AbortSig
   }
   const res = (await r.json()) as SolveInlineRes;
   if ((res.status !== 'OPTIMAL' && res.status !== 'FEASIBLE') || !res.cells || !Object.keys(res.cells).length) {
-    if (res.explanation?.length) throw new SolverRejectedError(res.explanation[0]);
+    const why = rejectText(res);
+    if (why) throw new SolverRejectedError(why);
     throw new Error(`solve-inline ${res.status}`);
   }
   const n = monthDays(month).length;
@@ -169,7 +182,7 @@ export function solverNote(draft: Assignment[], res: SolveInlineRes, shiftTypes?
     shiftTypes ? shiftTypes.filter((s) => s.group === '夜勤系').map((s) => s.id) : ['夜勤'],
   );
   const nights = nightIds.size > 0
-    ? STAFF.filter((s) => s.shifts.some((k) => nightIds.has(k) || (!shiftTypes && canWork(s, k)))).map(
+    ? STAFF.filter((s) => s.shifts.some((k) => nightIds.has(k) && (!!shiftTypes || canWork(s, k)))).map(
         (s) => draft.filter((a) => a.staffId === s.id && nightIds.has(a.shift)).length,
       )
     : [];

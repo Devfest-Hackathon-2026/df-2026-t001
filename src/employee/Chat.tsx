@@ -176,7 +176,7 @@ export function Chat({ s, c }: { s: State; c: Ctx }) {
       )}
       {menu && <Modal title="何を伝えますか？" onClose={() => setMenu(false)}><ActionGrid onPick={(k) => { setMenu(false); setSheet(k); }} /></Modal>}
       {sheet === '来月の希望' && <MonthRequest s={s} c={c} onClose={() => setSheet(null)} />}
-      {sheet && sheet !== '来月の希望' && <AiSheet s={s} kind={sheet} onClose={() => setSheet(null)} onSent={() => { setSheet(null); c.toast('シフト作成君に送りました'); }} />}
+      {sheet && sheet !== '来月の希望' && <AiSheet s={s} kind={sheet} onClose={() => setSheet(null)} onSent={(t) => { setSheet(null); c.toast(t ?? 'シフト作成君に送りました'); }} />}
       {zoom && <Modal title="写真" onClose={() => setZoom(null)}><img src={zoom} alt="拡大写真" style="width:100%;border-radius:12px" /></Modal>}
       {void SHIFTS}
     </div>
