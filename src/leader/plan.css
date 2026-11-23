@@ -85,7 +85,7 @@
 .pgrid td.c { user-select: none; cursor: cell; position: relative; } .pgrid td.selc { background: #dbe7fc; box-shadow: inset 0 0 0 1px #1a73e8; }
 .fillh { position: absolute; right: -1px; bottom: -1px; width: 7px; height: 7px; background: #1a73e8; border: 1px solid #fff; cursor: crosshair; z-index: 1; }
 .pgrid .t.paid { background: #e3f4e8; color: #1e6b3a; border: 1px solid #9fd2ae; border-radius: 5px; }
-.pgrid .nm { width: 178px; min-width: 178px; max-width: 178px; box-sizing: border-box; } .nmc { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; } .nmc .sk { display: inline-flex; gap: 2px; } .nmc .pl { font-size: 10px; color: var(--tx2); } .nmc .pl.lack { color: #b3261e; font-weight: 500; }
+.pgrid .nm { width: 200px; min-width: 200px; max-width: 200px; box-sizing: border-box; } .nmc { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; } .nmc .sk { display: inline-flex; gap: 2px; } .nmc .pl { font-size: 10px; color: var(--tx2); } .nmc .pl.lack { color: #b3261e; font-weight: 500; }
 .pgrid .pg-evrow th { height: 20px; font-weight: 400; } .pgrid .evl { display: inline-block; font-size: 10px; line-height: 16px; padding: 0 3px; border-radius: 4px; white-space: nowrap; }
 .pgrid .evcol { background: #f3f6fd; } .pgrid td.evcol.selc { background: #dbe7fc; }
 .pgrid .shrow th { height: 22px; } .shb { width: 26px; height: 18px; border: 0; border-radius: 4px; font-size: 11px; cursor: pointer; background: transparent; color: #fff; } .shb.warn { background: #e8a33a; } .shb.short { background: var(--bad, #c5352b); } .shb.ok { background: #e6f1ea; }
@@ -290,3 +290,9 @@
 .pgrid tbody tr.rt > td.nm { box-shadow: inset 3px 0 0 var(--sk), inset -1px 0 0 var(--line); }
 .sk-legend { gap: 6px; flex-wrap: wrap; }
 .sk-sw { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 4px; background: var(--skbg); color: var(--sk); font-size: 11px; border-left: 3px solid var(--sk); }
+.sk-lg { display: inline-flex; align-items: center; gap: 3px; margin-right: 8px; }
+.pgrid .nmc .bd { margin-left: 4px; }
+.pgrid .nmc .pl { margin-left: auto; }
+.pgrid .nmc .bd .b1 { width: 14px; height: 14px; font-size: 9px; border-radius: 3px; }
+.pgrid .nmc .bd { gap: 1px; }
+.pgrid .nmc .link { flex-shrink: 0; }

@@ -14,7 +14,7 @@ import { EVENT_STYLE } from './Events';
 
 type Plan = NonNullable<State['plan']>;
 const SK_ORDER: SkillId[] = ['medical', 'dementia', 'bath', 'swallow', 'terminal', 'driver'];
-// 行の色：その人が持つスキルのうち、いちばん上のもの（医療的ケア > 看取り > 認知症 > 嚥下 > 入浴 > 送迎）
+// 札の並びと行の色：医療的ケア > 看取り > 認知症 > 嚥下 > 入浴 > 送迎（行はいちばん上のスキルの色で薄く塗る）
 const SK_PRIO: SkillId[] = ['medical', 'terminal', 'dementia', 'swallow', 'bath', 'driver'];
 const topSkill = (skills: readonly SkillId[]) => SK_PRIO.find((k) => skills.includes(k));
 const SK1: Partial<Record<SkillId, string>> = { medical: '医', dementia: '認', bath: '浴', swallow: '嚥', terminal: '看', driver: '送' };
@@ -257,8 +257,8 @@ export function PlanGrid({ s, plan, month, days, ro, sums, onDay, onCell, onToas
       {check.length > 0 && <div class="xl-check" role="status"><b style="font-weight:500">いまの変更の確認</b><ul>{check.map((x) => <li key={x} class={/増|不足|労務|連勤|間隔/.test(x) && !x.includes('見つかりません') ? 'ng' : 'ok'}>{x}</li>)}</ul></div>}
 
       <div class="pgrid-wrap xl" ref={wrap} tabIndex={0} onKeyDown={onKey} aria-label="勤務表。矢印キーで移動し、数字キーで勤務を変更できます">
-        <table class={`pgrid${ro ? ' ro' : ''}`} style={`table-layout:fixed;width:${178 + 30 * shownPrev.length + 34 * days.length}px`}>
-          <colgroup><col style="width:178px" />{shownPrev.map((d) => <col key={d} style="width:30px" />)}{days.map((d) => <col key={d} style="width:34px" />)}</colgroup>
+        <table class={`pgrid${ro ? ' ro' : ''}`} style={`table-layout:fixed;width:${200 + 30 * shownPrev.length + 34 * days.length}px`}>
+          <colgroup><col style="width:200px" />{shownPrev.map((d) => <col key={d} style="width:30px" />)}{days.map((d) => <col key={d} style="width:34px" />)}</colgroup>
           <thead>
             <tr class="pg-evrow">
               <th class="nm"><span class="small">行事</span></th>
@@ -292,7 +292,7 @@ export function PlanGrid({ s, plan, month, days, ro, sums, onDay, onCell, onToas
             <tr key={u.id + 'h'} class={`ugrp${tint === 'unit' ? ` ut${UNITS.indexOf(u) % 4}` : ''}`}><th colSpan={shownPrev.length + days.length + 1}><span>{u.floor}階 {u.name}</span></th></tr>
             {rows.map((st) => { rowNo++; const r = rowNo; const off = dayOffOf(st.id); const pc = paidCount(s, st.id); const lack = PAID_TARGET - pc;
               return <tr key={st.id} class={tint === 'unit' ? `ut${UNITS.findIndex((x) => x.id === st.homeUnit) % 4}` : tint === 'skill' && topSkill(st.skills) ? `rt sk-${topSkill(st.skills)}` : undefined}><td class="nm"><div class="nmc"><button class="link" style="font-size:13px" onClick={() => onCell(st.id, days[0])}>{st.name}</button>
-                {skSel.some((k) => st.skills.includes(k)) && <span class="bd">{skSel.filter((k) => st.skills.includes(k)).map((k) => <span key={k} class={`b1 sk-${k}`} title={SKILLS[k].label}>{SK1[k]}</span>)}</span>}
+                {SK_PRIO.some((k) => st.skills.includes(k)) && <span class="bd">{SK_PRIO.filter((k) => st.skills.includes(k)).map((k) => <span key={k} class={`b1 sk-${k}`} title={SKILLS[k].label}>{SK1[k]}</span>)}</span>}
                 <span class={`pl${lack > 0 ? ' lack' : ''}`} title={`有給休暇 今年度 ${pc}日／義務 ${PAID_TARGET}日（デモ用の仮値）`}>有休 {pc}/{PAID_TARGET}</span></div></td>
                 {shownPrev.map((pd, i) => {
                   const pa = prevIdx.get(`${st.id}|${pd}`);
@@ -332,13 +332,13 @@ export function PlanGrid({ s, plan, month, days, ro, sums, onDay, onCell, onToas
         <span class="lgt"><span class="mk-wish-demo" />勤務の希望</span>
         <span class="lgt"><span class="mk-prev-demo">早</span>前月7日（参照のみ）</span>
         <span class="lgt"><span style="width:14px;height:6px;background:var(--bad);display:inline-block;border-radius:2px" />不足あり</span>
-        {tint === 'skill' && <span class="lgt sk-legend">行の色：{SK_PRIO.map((k) => <span key={k} class={`sk-sw sk-${k}`}>{SKILLS[k].label}</span>)}</span>}
+        <span class="lgt sk-legend">{SK_PRIO.map((k) => <span key={k} class="sk-lg"><span class={`b1 sk-${k}`}>{SK1[k]}</span>{SKILLS[k].label}</span>)}</span>
         <details class="xl-more pg-view">
           <summary class="pg-gear" aria-label="表示の設定"><Icon n="tune" sm /> 表示</summary>
           <div class="xl-pop pg-view-pop">
             <div class="small">行の色</div>
             <div class="seg">{([['skill', 'スキル'], ['unit', 'ユニット'], ['none', 'なし']] as const).map(([k, l]) => <button key={k} aria-pressed={tint === k} onClick={() => setTint(k)}>{l}</button>)}</div>
-            <div class="small" style="margin-top:6px">名前の右に札と人数を出すスキル</div>
+            <div class="small" style="margin-top:6px">日ごとの人数を出すスキル</div>
             {SK_ORDER.map((k) => <label key={k} class="pg-ck"><input type="checkbox" checked={skSel.includes(k)} onChange={(e) => setSkSel((e.target as HTMLInputElement).checked ? SK_ORDER.filter((x) => x === k || skSel.includes(x)) : skSel.filter((x) => x !== k))} /><span class={`b1 sk-${k}`}>{SK1[k]}</span>{SKILLS[k].label}</label>)}
             <label class="pg-ck" style="margin-top:6px"><input type="checkbox" checked={showPrev} onChange={(e) => setShowPrev((e.target as HTMLInputElement).checked)} />前月7日を表示</label>
           </div>
