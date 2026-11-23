@@ -161,6 +161,12 @@ export function ResolvedView({ s, v }: { s: { assignments: Assignment[] }; v: Va
 /** 解消したあと：前と後の手薄な時間の数だけを1行で（行ごとの図は「詳しく」に畳む） */
 export function ResolvedSummary({ s, v }: { s: { assignments: Assignment[] }; v: Vacancy }) {
   const r = v.resolution;
+  // 時間の調整で埋めたときは、承認の前と同じ 2 本の帯（赤 → 緑）で見せる
+  if (r?.kind === 'adjust' && r.changes?.length) {
+    const ids = r.changes.map((c) => c.assignmentId);
+    const before = s.assignments.map((a) => (ids.includes(a.id) ? { ...a, adjust: undefined } : a.id === v.fromAssignmentId ? { ...a, covered: false } : a));
+    return <div style="margin-top:12px"><GapStrips v={v} before={before} after={s.assignments} ids={ids} />{r.changes.map((c) => <p key={c.assignmentId} class="adj-line">{c.text}</p>)}</div>;
+  }
   const pair = useMemo(() => {
     if (!r) return null;
     if (r.kind === 'adjust' && r.changes?.length) {
@@ -178,6 +184,42 @@ export function ResolvedSummary({ s, v }: { s: { assignments: Assignment[] }; v:
       <div><span class="small">前</span><b>手薄な時間 {pair.b}か所</b></div>
       <Icon n="arrow_forward" />
       <div><span class="small">{pair.how}</span><b class={pair.a ? '' : 'ok'}>{pair.a ? `${pair.a}か所` : '0か所（解消）'}</b></div>
+    </div>
+  );
+}
+
+/** 時間の帯 2 本：前は不足の時間を赤、後は調整で埋まった所を緑（残る不足は赤のまま）。変わる人の勤務も同じ帯に重ねる */
+export function GapStrips({ v, before, after, ids }: { v: Vacancy; before: Assignment[]; after: Assignment[]; ids: string[] }) {
+  const d = useMemo(() => {
+    const ib = issuesFor(v, before); const ia = issuesFor(v, after);
+    const [t0, t1] = windowFor(v, [ib, ia]);
+    const span = (list: Assignment[]) => ids.map((id) => { const a = list.find((x) => x.id === id); const r = a ? buildDay(list, a.date).find((x) => x.assignment.id === id && !x.tail) : undefined; const bs = r?.blocks ?? []; return { id, name: a ? staffById(a.staffId).name : '', s: bs.length ? Math.min(...bs.map((b) => b.start)) : 0, e: bs.length ? Math.max(...bs.map((b) => b.end)) : 0 }; });
+    return { ib, ia, t0, t1, sb: span(before), sa: span(after) };
+  }, [before, after, v.id, ids.join(',')]);
+  const { t0, t1 } = d; const W = t1 - t0;
+  const pos = (a: number, b: number) => `left:${((Math.max(a, t0) - t0) / W) * 100}%;width:${((Math.min(b, t1) - Math.max(a, t0)) / W) * 100}%`;
+  const step = W <= 420 ? 60 : 120; const ticks: number[] = []; for (let t = Math.ceil(t0 / step) * step; t < t1; t += step) ticks.push(t);
+  const fixed = d.ib.filter((i) => !d.ia.some((j) => j.t0 < i.t1 && j.t1 > i.t0));
+  const strip = (label: string, after: boolean) => (
+    <div class="gs-row">
+      <span class="gs-l">{label}</span>
+      <span class="gs-track">
+        {(after ? d.sa : d.sb).map((x) => { const b = d.sb.find((y) => y.id === x.id)!; return <span key={x.id}>
+          <span class="gs-work" style={pos(after ? Math.max(x.s, b.s) : x.s, after ? Math.min(x.e, b.e) : x.e)} />
+          {after && x.e > b.e && <span class="gs-work add" style={pos(b.e, x.e)} />}
+          {after && x.s < b.s && <span class="gs-work add" style={pos(x.s, b.s)} />}
+        </span>; })}
+        {(after ? d.ia : d.ib).map((i, k) => <span key={'r' + k} class="gs-gap bad" style={pos(i.t0, i.t1)} />)}
+        {after && fixed.map((i, k) => <span key={'g' + k} class="gs-gap ok" style={pos(i.t0, i.t1)} />)}
+      </span>
+      <span class={`gs-s ${(after ? d.ia : d.ib).length ? 'bad' : 'ok'}`}>{(after ? d.ia : d.ib).length ? `不足 ${(after ? d.ia : d.ib).map((i) => `${fmtHM(i.t0)}〜${fmtHM(i.t1)}`).join('、')}` : '不足なし'}</span>
+    </div>);
+  return (
+    <div class="gs">
+      <div class="gs-row gs-axis"><span class="gs-l" /><span class="gs-track">{ticks.map((t) => <span key={t} class="gs-tick" style={`left:${((t - t0) / W) * 100}%`}>{fmtHM(t)}</span>)}</span><span class="gs-s" /></div>
+      {strip('前', false)}
+      {strip('後', true)}
+      <div class="gs-key small"><span class="gs-sw work" />{d.sb.map((x) => x.name).join('・')}さんの勤務<span class="gs-sw add" />のばした分<span class="gs-sw bad" />不足<span class="gs-sw ok" />埋まった</div>
     </div>
   );
 }

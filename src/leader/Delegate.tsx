@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'preact/hooks';
 import { SHIFTS, SKILLS, staffById, unitName } from '../core/facility';
 import { addDays, fmtMD, stampTime } from '../core/dates';
-import { proposeAdjustments, skillReasons } from '../core/roster';
+import { proposeAdjustments, skillReasons, applyAdjust } from '../core/roster';
 import type { AdjustPlan, Candidate } from '../core/roster';
 import {
   applyAdjustment, clearVacancyOpts, delegateAutopilot, demoApplication, demoPlan, demoReply, jobText, confirmApplicant, declineAutopilot, effSettings, pauseAutopilot, rejectJobPost, resumeAutopilot, setVacancyOpts, skipAdjustment, skipCandidate, startAutopilot,
@@ -9,7 +9,7 @@ import {
 import type { State } from '../core/store';
 import type { Vacancy } from '../core/types';
 import { Icon, Modal } from '../shared/ui';
-import { DayImpact, PlanBeforeAfter, ResolvedSummary, ResolvedView, SkillSituation } from './Impact';
+import { DayImpact, GapStrips, PlanBeforeAfter, ResolvedSummary, ResolvedView, SkillSituation } from './Impact';
 import { Applicants, JobPreview, PRIORITY_NOTE, SkillWhy } from './Job';
 import { PostFlow, PostSheet, RelayCard } from './Auto';
 import { PLAN_LABEL } from './Adjust';
@@ -57,15 +57,18 @@ export function AdjustApprovalCard({ s, v, openStaff, onPreview }: { s: State; v
   return (
     <section class="card askcard">
       <div class="row spread wrap" style="gap:8px"><div class="row" style="gap:8px"><Icon n="swap_horiz" /><b style="font-weight:500">時間の調整の承認</b></div><span class="chip warn">あなたの承認待ち</span></div>
-      <p style="margin-top:4px">{fmtMD(v.date)} {v.shift}／{unitName(v.unitId)}：時間をずらして対応できます。</p>
+      <p style="margin-top:4px">{fmtMD(v.date)} {v.shift}／{unitName(v.unitId)}</p>
       {plan ? <div class="plan sel" style="margin-top:8px">
-        {nPlans > 0 && <p class="small" style="margin-bottom:4px">条件を満たす {nPlans} 案のうち、変更が最小の案</p>}
-        <div class="row wrap" style="gap:6px"><b style="font-weight:500">{plan.title}</b>{plan.kind === 'combo' && <span class="chip pri">組み合わせ</span>}<span class="chip ok">手薄な時間が解消します</span></div>
-        <ul>{plan.changes.map((c) => <li key={c.assignmentId}>{c.text}</li>)}</ul>
-        <ul class="small" style="margin-top:6px">{adjustChecks(s.assignments, plan).map((x, i) => <li key={i}><Icon n="check" sm /> {x}</li>)}</ul>
-        <ReplanNote v={v} />
-        <details class="more"><summary>変更前後のスケジュール</summary><PlanBeforeAfter all={s.assignments} v={v} plan={plan} />{plan.caution && <p class="small" style="margin-top:6px"><Icon n="info" sm /> {plan.caution}</p>}</details>
-        <p class="small" style="margin-top:6px;color:var(--tx)">承認すると通知する職員：{openStaff ? plan.affected.map((id, i) => <span key={id}>{i ? '、' : ''}<button class="link" onClick={() => openStaff(id)}>{staffById(id).name}</button></span>) : names(plan.affected)}</p>
+        <GapStrips v={v} before={s.assignments} after={applyAdjust(s.assignments, plan.changes)} ids={plan.changes.map((c) => c.assignmentId)} />
+        {plan.changes.map((c) => <p key={c.assignmentId} class="adj-line">{c.text}</p>)}
+        <details class="more"><summary>詳しく</summary>
+          {nPlans > 0 && <p class="small" style="margin:6px 0 4px">条件を満たす {nPlans} 案のうち、変更が最小の案です。</p>}
+          <ul class="small" style="margin-top:6px">{adjustChecks(s.assignments, plan).map((x, i) => <li key={i}><Icon n="check" sm /> {x}</li>)}</ul>
+          <ReplanNote v={v} />
+          {plan.caution && <p class="small" style="margin-top:6px"><Icon n="info" sm /> {plan.caution}</p>}
+          <p class="small" style="margin-top:6px">承認すると通知する職員：{openStaff ? plan.affected.map((id, i) => <span key={id}>{i ? '、' : ''}<button class="link" onClick={() => openStaff(id)}>{staffById(id).name}</button></span>) : names(plan.affected)}</p>
+          <div style="margin-top:8px"><PlanBeforeAfter all={s.assignments} v={v} plan={plan} /></div>
+        </details>
       </div> : <p class="small" style="margin-top:8px">この調整案は、状況が変わったため確認できません。別の方法に進めてください。</p>}
       <div class="row wrap" style="margin-top:12px">
         {plan && <button class="btn pri" onClick={() => applyAdjustment(v.id, v.auto!.planId!)}>この調整を承認</button>}
@@ -159,6 +162,7 @@ export function MainCard({ s, v, openStaff, onSettings, onManual, onPreviewPlan,
       </>}
 
       {(m === 'running' || m === 'paused') && a && <>
+        {(() => { const short = a.log.some((l) => l.text.startsWith('時間をずらす調整だけでは足りない')); const skipped = a.log.some((l) => l.text.startsWith('リーダーは時間調整を見送りました')); return short || skipped ? <p class="adj-flow"><span class="af-step">時間をずらす：{short ? '足りない' : '見送り'}</span><Icon n="arrow_forward" sm /><span class="af-step cur">声かけ中</span></p> : null; })()}
         <p style="margin-top:8px">{m === 'paused' ? '一時停止中です。' : a.pendingStaff && a.waitUntil ? `${staffById(a.pendingStaff).name}さんへは ${stampTime(a.waitUntil)} に連絡します（夜間のため）。` : pend ? `${staffById(pend.staffId).name}さんの返事を待っています${a.waitUntil ? `（〜${stampTime(a.waitUntil)}）` : ''}。` : '次の候補を選んでいます。'}</p>
         {m === 'running' && pend && !docked && <OfferChat s={s} v={v} staffId={pend.staffId} />}
         <div class="row wrap" style="margin-top:8px">{m === 'paused' ? <button class="btn sm pri" onClick={() => resumeAutopilot(v.id)}><Icon n="play_arrow" sm /> 再開</button> : <button class="btn sm" onClick={() => pauseAutopilot(v.id)}><Icon n="pause" sm /> 一時停止</button>}
